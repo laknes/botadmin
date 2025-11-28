@@ -20,7 +20,8 @@ import {
   Server,
   Code,
   Package,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
 
 // Mock Data for Simulation
@@ -179,7 +180,7 @@ const BotDesigner: React.FC = () => {
  * 1. ابتدا Node.js را نصب کنید.
  * 2. دستور زیر را برای نصب وابستگی‌ها اجرا کنید:
  * 
- *    npm install node-telegram-bot-api mysql2
+ *    npm install node-telegram-bot-api mysql2 dotenv
  * 
  * 3. سپس ربات را اجرا کنید:
  * 
@@ -254,7 +255,7 @@ bot.on('polling_error', (error) => {
 console.log('✅ سیستم آماده است. لطفا در تلگرام به ربات پیام دهید.');
 `.trim();
 
-  const installCmd = "npm install node-telegram-bot-api mysql2";
+  const installCmd = "npm install node-telegram-bot-api mysql2 dotenv";
   
   const installationScript = `#!/bin/bash
 
@@ -316,6 +317,16 @@ echo "----------------------------------------------------"
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  const handleDownloadBot = () => {
+    const element = document.createElement("a");
+    const file = new Blob([generatedCode], {type: 'text/javascript'});
+    element.href = URL.createObjectURL(file);
+    element.download = "bot.js";
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   const handleCopyInstall = () => {
     navigator.clipboard.writeText(installCmd);
     setCopiedInstall(true);
@@ -326,6 +337,16 @@ echo "----------------------------------------------------"
     navigator.clipboard.writeText(installationScript);
     setCopiedScript(true);
     setTimeout(() => setCopiedScript(false), 2000);
+  };
+
+  const handleDownloadScript = () => {
+    const element = document.createElement("a");
+    const file = new Blob([installationScript], {type: 'text/x-sh'});
+    element.href = URL.createObjectURL(file);
+    element.download = "installation.sh";
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
   };
 
   // Styles
@@ -437,16 +458,25 @@ echo "----------------------------------------------------"
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
                     <h3 className={labelClassName}>اسکریپت نصب کامل سرور (installation.sh)</h3>
-                    <button 
-                        onClick={handleCopyScript}
-                        className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200 transition-colors font-medium"
-                    >
-                        {copiedScript ? <CheckCircle size={14} /> : <Copy size={14} />}
-                        {copiedScript ? 'کپی شد!' : 'کپی اسکریپت'}
-                    </button>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={handleDownloadScript}
+                            className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 transition-colors font-medium"
+                        >
+                            <Download size={14} />
+                            دانلود فایل
+                        </button>
+                        <button 
+                            onClick={handleCopyScript}
+                            className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md hover:bg-green-200 transition-colors font-medium"
+                        >
+                            {copiedScript ? <CheckCircle size={14} /> : <Copy size={14} />}
+                            {copiedScript ? 'کپی شد!' : 'کپی کد'}
+                        </button>
+                    </div>
                 </div>
                 <div className="relative group">
-                  <pre className="bg-slate-800 text-blue-300 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-600 shadow-inner h-32" dir="ltr">
+                  <pre className="bg-slate-800 text-blue-300 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-600 shadow-inner h-96" dir="ltr">
                     <code>{installationScript}</code>
                   </pre>
                 </div>
@@ -460,16 +490,25 @@ echo "----------------------------------------------------"
                   <p className="text-xs text-gray-500">
                     یک فایل به نام <code>bot.js</code> بسازید و کد زیر را در آن قرار دهید.
                   </p>
-                  <button 
-                    onClick={handleCopyCode}
-                    className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-md hover:bg-indigo-200 transition-colors font-medium"
-                  >
-                    {copiedCode ? <CheckCircle size={14} /> : <Copy size={14} />}
-                    {copiedCode ? 'کپی شد!' : 'کپی کد'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                        onClick={handleDownloadBot}
+                        className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 transition-colors font-medium"
+                    >
+                        <Download size={14} />
+                        دانلود فایل
+                    </button>
+                    <button 
+                        onClick={handleCopyCode}
+                        className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-md hover:bg-indigo-200 transition-colors font-medium"
+                    >
+                        {copiedCode ? <CheckCircle size={14} /> : <Copy size={14} />}
+                        {copiedCode ? 'کپی شد!' : 'کپی کد'}
+                    </button>
+                  </div>
                 </div>
                 <div className="relative group">
-                  <pre className="bg-slate-900 text-green-400 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-700 shadow-inner h-64" dir="ltr">
+                  <pre className="bg-slate-900 text-green-400 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-700 shadow-inner h-96" dir="ltr">
                     <code>{generatedCode}</code>
                   </pre>
                 </div>
