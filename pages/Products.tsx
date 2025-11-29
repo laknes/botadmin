@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud } from 'lucide-react';
 import { Product } from '../types';
 import { generateProductDescription } from '../services/geminiService';
 
@@ -94,6 +94,17 @@ const Products: React.FC = () => {
     setLoadingAI(false);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCurrentProduct(prev => ({ ...prev, imageUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = () => {
     let updatedProducts;
     if (currentProduct.id) {
@@ -101,7 +112,11 @@ const Products: React.FC = () => {
       updatedProducts = products.map(p => p.id === currentProduct.id ? currentProduct as Product : p);
     } else {
       // Add
-      updatedProducts = [...products, { ...currentProduct, id: Date.now().toString(), imageUrl: 'https://picsum.photos/100/100' } as Product];
+      updatedProducts = [...products, { 
+        ...currentProduct, 
+        id: Date.now().toString(), 
+        imageUrl: currentProduct.imageUrl || 'https://picsum.photos/100/100' // Default if empty
+      } as Product];
     }
     saveProducts(updatedProducts);
     setIsModalOpen(false);
@@ -206,7 +221,7 @@ const Products: React.FC = () => {
               {filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
-                    <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-200" />
+                    <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-200 border border-gray-100" />
                   </td>
                   <td className="px-6 py-4 font-medium text-slate-800">{product.name}</td>
                   <td className="px-6 py-4 text-gray-500">
@@ -355,10 +370,30 @@ const Products: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">تصویر محصول</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors cursor-pointer relative">
-                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" />
-                  <ImageIcon size={32} className="mb-2" />
-                  <span className="text-sm">برای آپلود کلیک کنید یا فایل را بکشید</span>
+                <div className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer relative overflow-hidden ${currentProduct.imageUrl ? 'border-indigo-300 bg-indigo-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                  />
+                  
+                  {currentProduct.imageUrl ? (
+                    <div className="relative w-full h-48 flex items-center justify-center">
+                        <img src={currentProduct.imageUrl} alt="Preview" className="h-full object-contain rounded-md" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
+                            <span className="text-white font-medium flex items-center gap-2">
+                                <UploadCloud size={20} />
+                                تغییر تصویر
+                            </span>
+                        </div>
+                    </div>
+                  ) : (
+                    <>
+                      <ImageIcon size={32} className="mb-2 text-gray-400" />
+                      <span className="text-sm text-gray-500">برای آپلود کلیک کنید یا فایل را بکشید</span>
+                    </>
+                  )}
                 </div>
               </div>
 

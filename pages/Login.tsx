@@ -12,12 +12,33 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin') {
-      onLogin('admin');
-    } else if (username === 'editor' && password === 'editor') {
-      onLogin('editor');
-    } else {
-      setError('نام کاربری یا رمز عبور اشتباه است (admin/admin)');
+    
+    // Check Local Storage first (Dynamic Users)
+    const storedUsers = localStorage.getItem('app_users');
+    let authenticated = false;
+
+    if (storedUsers) {
+        try {
+            const users = JSON.parse(storedUsers);
+            const user = users.find((u: any) => u.username === username && u.password === password);
+            if (user) {
+                onLogin(user.role);
+                authenticated = true;
+            }
+        } catch (err) {
+            console.error("Error parsing users from local storage", err);
+        }
+    }
+
+    // Fallback for default admin if not authenticated via storage (or storage empty/corrupt)
+    if (!authenticated) {
+        if (username === 'admin' && password === 'admin') {
+             onLogin('admin');
+        } else if (username === 'editor' && password === 'editor') {
+             onLogin('editor');
+        } else {
+             setError('نام کاربری یا رمز عبور اشتباه است.');
+        }
     }
   };
 
@@ -49,6 +70,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                 placeholder="نام کاربری خود را وارد کنید"
+                dir="ltr"
               />
             </div>
           </div>
@@ -63,6 +85,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                 placeholder="••••••••"
+                dir="ltr"
               />
             </div>
           </div>
@@ -76,7 +99,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </form>
 
         <div className="mt-6 text-center text-xs text-gray-400">
-          <p>اطلاعات پیش‌فرض: admin / admin</p>
+          <p>پیش‌فرض: admin / admin</p>
         </div>
       </div>
     </div>

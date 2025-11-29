@@ -32,14 +32,6 @@ import {
   Clock
 } from 'lucide-react';
 
-// Mock Data for Simulation
-const MOCK_CATEGORIES = [
-  { id: '1', title: '📱 کالای دیجیتال' },
-  { id: '2', title: '👕 پوشاک' },
-  { id: '3', title: '🏠 خانه و آشپزخانه' },
-  { id: '4', title: '📚 کتاب و لوازم التحریر' },
-];
-
 const MOCK_PRODUCT = {
   name: 'هدفون بی‌سیم مدل X2',
   price: '۱,۲۰۰,۰۰۰ تومان',
@@ -73,6 +65,9 @@ const BotDesigner: React.FC = () => {
   const [copiedInstall, setCopiedInstall] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
 
+  // Categories for Simulator
+  const [simCategories, setSimCategories] = useState<{id: string, title: string}[]>([]);
+
   // Load settings from local storage
   useEffect(() => {
     const savedToken = localStorage.getItem('bot_token');
@@ -95,6 +90,19 @@ const BotDesigner: React.FC = () => {
     if (savedBtnCat) setBtnCategoryText(savedBtnCat);
     if (savedBtnCart) setBtnCartText(savedBtnCart);
     if (savedBtnSignUp) setBtnSignUpText(savedBtnSignUp);
+
+    // Load Categories for Simulator
+    const savedCats = localStorage.getItem('categories');
+    if (savedCats) {
+        const parsed = JSON.parse(savedCats);
+        setSimCategories(parsed.map((c: string, i: number) => ({ id: i.toString(), title: c })));
+    } else {
+        // Fallback defaults
+        setSimCategories([
+            { id: '1', title: 'الکترونیک' },
+            { id: '2', title: 'گجت' }
+        ]);
+    }
   }, []);
 
   const handleSaveSettings = () => {
@@ -307,7 +315,8 @@ const createConnection = async () => {
   try {
     const connection = await mysql.createPool(DB_CONFIG);
     console.log('✅ Connected to Database');
-    // ایجاد جدول کاربران اگر وجود نداشته باشد
+    
+    // ایجاد جدول کاربران
     await connection.execute(\`
       CREATE TABLE IF NOT EXISTS users (
         chat_id BIGINT PRIMARY KEY,
@@ -316,6 +325,20 @@ const createConnection = async () => {
         registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     \`);
+
+    // ایجاد جدول محصولات (جهت اطمینان)
+    await connection.execute(\`
+      CREATE TABLE IF NOT EXISTS products (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255),
+        category VARCHAR(100),
+        price DECIMAL(15,0),
+        stock INT,
+        description TEXT,
+        image_url TEXT
+      )
+    \`);
+
     return connection;
   } catch (err) {
     console.warn('⚠️ Database connection failed. Running in mock mode.', err.message);
@@ -426,14 +449,35 @@ bot.on('callback_query', async (query) => {
   }
 
   if (data === 'categories') {
-    // در اینجا باید دسته‌ها را از دیتابیس بخوانید
-    bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:');
+    // دریافت دسته‌بندی‌ها از دیتابیس
+    try {
+      if (pool) {
+         const [rows] = await pool.execute('SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ""');
+         if (rows.length > 0) {
+             const categoryButtons = rows.map(row => [{ text: row.category, callback_data: \`cat_\${row.category}\` }]);
+             bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:', {
+                 reply_markup: { inline_keyboard: categoryButtons }
+             });
+         } else {
+             bot.sendMessage(chatId, 'هنوز محصولی به فروشگاه اضافه نشده است.');
+         }
+      } else {
+         bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید (حالت تست).');
+      }
+    } catch(err) {
+        console.error(err);
+        bot.sendMessage(chatId, 'خطا در دریافت دسته‌بندی‌ها.');
+    }
+
   } else if (data === 'search') {
     bot.sendMessage(chatId, 'لطفا نام محصول را ارسال کنید:');
   } else if (data === 'search_code') {
     bot.sendMessage(chatId, 'لطفا کد محصول را ارسال کنید:');
   } else if (data === 'cart') {
     bot.sendMessage(chatId, 'سبد خرید شما در حال حاضر خالی است. لطفا محصولات را به سبد اضافه کنید.');
+  } else if (data.startsWith('cat_')) {
+      const selectedCategory = data.split('cat_')[1];
+      bot.sendMessage(chatId, \`شما دسته "\${selectedCategory}" را انتخاب کردید. (لیست محصولات اینجا نمایش داده می‌شود)\`);
   }
 });
 
@@ -1042,7 +1086,7 @@ echo "----------------------------------------------------"
                         {/* Inline Buttons Rendering */}
                         {msg.buttons === 'category_list' && (
                             <div className="mt-2 grid grid-cols-2 gap-2">
-                                {MOCK_CATEGORIES.map(cat => (
+                                {simCategories.map(cat => (
                                     <button 
                                         key={cat.id}
                                         onClick={() => handleSimulateAction('show_product')}

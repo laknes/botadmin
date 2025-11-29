@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Shield, Edit2, Trash2, Plus, X, Check, Search } from 'lucide-react';
+import { User, Shield, Edit2, Trash2, Plus, X, Check, Search, Eye, EyeOff, Lock } from 'lucide-react';
 
 interface UserData {
   id: string;
@@ -7,12 +7,13 @@ interface UserData {
   username: string;
   role: 'admin' | 'editor';
   lastActive: string;
+  password?: string;
 }
 
 const MOCK_USERS: UserData[] = [
-  { id: '1', name: 'مدیر سیستم', username: 'admin', role: 'admin', lastActive: 'آنلاین' },
-  { id: '2', name: 'سارا احمدی', username: 'sara_content', role: 'editor', lastActive: '۲ ساعت پیش' },
-  { id: '3', name: 'علی رضاپور', username: 'ali_support', role: 'editor', lastActive: '۱ روز پیش' },
+  { id: '1', name: 'مدیر سیستم', username: 'admin', role: 'admin', lastActive: 'آنلاین', password: 'admin' },
+  { id: '2', name: 'سارا احمدی', username: 'sara_content', role: 'editor', lastActive: '۲ ساعت پیش', password: 'editor' },
+  { id: '3', name: 'علی رضاپور', username: 'ali_support', role: 'editor', lastActive: '۱ روز پیش', password: '123456' },
 ];
 
 const UsersPage: React.FC = () => {
@@ -24,14 +25,19 @@ const UsersPage: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Partial<UserData>>({
     name: '',
     username: '',
-    role: 'editor'
+    role: 'editor',
+    password: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   // Load/Save to LocalStorage to make it feel real
   useEffect(() => {
     const savedUsers = localStorage.getItem('app_users');
     if (savedUsers) {
       setUsers(JSON.parse(savedUsers));
+    } else {
+      // Initialize with mock users if empty
+      localStorage.setItem('app_users', JSON.stringify(MOCK_USERS));
     }
   }, []);
 
@@ -42,22 +48,39 @@ const UsersPage: React.FC = () => {
 
   const handleOpenModal = (user?: UserData) => {
     if (user) {
-      setCurrentUser(user);
+      setCurrentUser({ ...user, password: '' }); // Clear password field on edit to avoid showing it
     } else {
-      setCurrentUser({ name: '', username: '', role: 'editor' });
+      setCurrentUser({ name: '', username: '', role: 'editor', password: '' });
     }
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
   const handleSave = () => {
-    if (!currentUser.name || !currentUser.username) return;
+    if (!currentUser.name || !currentUser.username) {
+        alert("نام و نام کاربری الزامی است.");
+        return;
+    }
 
     if (currentUser.id) {
       // Edit
-      const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, ...currentUser } as UserData : u);
+      // Find existing user to keep old password if new one is empty
+      const existingUser = users.find(u => u.id === currentUser.id);
+      const passwordToSave = currentUser.password ? currentUser.password : existingUser?.password;
+
+      const updatedUsers = users.map(u => u.id === currentUser.id ? { 
+          ...u, 
+          ...currentUser, 
+          password: passwordToSave 
+      } as UserData : u);
+      
       saveUsersToStorage(updatedUsers);
     } else {
       // Add
+      if (!currentUser.password) {
+          alert("برای کاربر جدید رمز عبور الزامی است.");
+          return;
+      }
       const newUser = {
         ...currentUser,
         id: Date.now().toString(),
@@ -209,6 +232,28 @@ const UsersPage: React.FC = () => {
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                   dir="ltr"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">رمز عبور {currentUser.id && '(در صورت عدم تغییر خالی بگذارید)'}</label>
+                <div className="relative">
+                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input 
+                    type={showPassword ? "text" : "password"}
+                    value={currentUser.password}
+                    onChange={e => setCurrentUser({...currentUser, password: e.target.value})}
+                    placeholder={currentUser.id ? "••••••••" : "رمز عبور را وارد کنید"}
+                    className="w-full p-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    dir="ltr"
+                    />
+                    <button 
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                </div>
               </div>
 
               <div>
