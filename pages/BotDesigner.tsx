@@ -180,7 +180,7 @@ const BotDesigner: React.FC = () => {
  * 1. ابتدا Node.js را نصب کنید.
  * 2. دستور زیر را برای نصب وابستگی‌ها اجرا کنید:
  * 
- *    npm install node-telegram-bot-api mysql2 dotenv
+ *    npm install node-telegram-bot-api mysql2 dotenv express
  * 
  * 3. سپس ربات را اجرا کنید:
  * 
@@ -255,7 +255,7 @@ bot.on('polling_error', (error) => {
 console.log('✅ سیستم آماده است. لطفا در تلگرام به ربات پیام دهید.');
 `.trim();
 
-  const installCmd = "npm install node-telegram-bot-api mysql2 dotenv";
+  const installCmd = "npm install node-telegram-bot-api mysql2 dotenv express";
   
   const installationScript = `#!/bin/bash
 
@@ -293,7 +293,7 @@ echo "✅ Database 'telegram_shop_db' created."
 # 5. Project Setup
 echo "📂 Setting up Project..."
 
-# Install dependencies
+# Install dependencies (includes Express)
 npm install
 
 # Build the frontend
@@ -302,12 +302,12 @@ npm run build
 
 # 6. Bot Setup
 echo "🤖 Setting up Bot..."
-npm install node-telegram-bot-api mysql2 dotenv
+npm install node-telegram-bot-api mysql2 dotenv express
 
 echo "✅ Installation Complete!"
 echo "----------------------------------------------------"
-echo "👉 To start the frontend: npm run preview"
-echo "👉 To start the bot: node bot.js"
+echo "👉 To start the Admin Panel: npm start"
+echo "👉 To start the Telegram Bot: node bot.js"
 echo "----------------------------------------------------"
 `;
 
@@ -516,8 +516,15 @@ echo "----------------------------------------------------"
 
               <div>
                 <h3 className={labelClassName}>۳. اجرا</h3>
-                <div className="bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
-                  node bot.js
+                <div className="flex gap-4">
+                  <div className="flex-1 bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
+                    npm start
+                    <span className="text-gray-400 block mt-1">// اجرای پنل مدیریت</span>
+                  </div>
+                  <div className="flex-1 bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
+                    node bot.js
+                    <span className="text-gray-400 block mt-1">// اجرای ربات تلگرام</span>
+                  </div>
                 </div>
               </div>
             </div>
