@@ -304,10 +304,37 @@ npm run build
 echo "🤖 Setting up Bot..."
 npm install node-telegram-bot-api mysql2 dotenv express
 
-echo "✅ Installation Complete!"
+# 7. Install PM2 (Process Manager)
+echo "🔄 Installing PM2 (Process Manager)..."
+sudo npm install -g pm2
+
+# 8. Start Processes
+echo "🚀 Starting Applications..."
+
+# Stop existing processes if any
+pm2 delete all 2>/dev/null || true
+
+# Start Admin Panel
+pm2 start server.js --name "admin-panel"
+
+# Start Telegram Bot
+# Check if bot.js exists before starting
+if [ -f "bot.js" ]; then
+    pm2 start bot.js --name "telegram-bot"
+else
+    echo "⚠️ bot.js not found. Skipping bot startup. Please create bot.js and run 'pm2 start bot.js --name telegram-bot'"
+fi
+
+# Save Process List
+pm2 save
+pm2 startup | tail -n 1 | bash
+
+echo "✅ Installation & Deployment Complete!"
 echo "----------------------------------------------------"
-echo "👉 To start the Admin Panel: npm start"
-echo "👉 To start the Telegram Bot: node bot.js"
+echo "👉 Admin Panel is active."
+echo "👉 Telegram Bot is active (if bot.js existed)."
+echo "👉 Use 'pm2 status' to see running apps."
+echo "👉 Use 'pm2 logs' to see logs."
 echo "----------------------------------------------------"
 `;
 
@@ -427,12 +454,12 @@ echo "----------------------------------------------------"
 
           {activeTab === 'deploy' && (
             <div className="space-y-6">
-              <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-sm text-red-900 flex items-start gap-3 shadow-sm">
-                <Server className="shrink-0 mt-0.5 text-red-600" size={20} />
+              <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200 text-sm text-emerald-900 flex items-start gap-3 shadow-sm">
+                <CheckCircle className="shrink-0 mt-0.5 text-emerald-600" size={20} />
                 <div className="space-y-2">
-                  <p className="font-bold">خطای "Cannot find module" را دریافت کردید؟</p>
+                  <p className="font-bold">اجرای همیشگی در پس‌زمینه (PM2)</p>
                   <p className="leading-6">
-                    این خطا یعنی کتابخانه‌های مورد نیاز نصب نشده‌اند. همچنین چون پروژه از نوع ماژولار است، باید از کد زیر (با import) استفاده کنید.
+                    اسکریپت زیر به صورت خودکار ابزار <b>PM2</b> را نصب می‌کند. این ابزار باعث می‌شود ربات و پنل ادمین حتی بعد از بستن ترمینال روشن بمانند و در صورت ریستارت سرور، خودکار اجرا شوند.
                   </p>
                 </div>
               </div>
@@ -480,7 +507,7 @@ echo "----------------------------------------------------"
                     <code>{installationScript}</code>
                   </pre>
                 </div>
-                 <p className="text-xs text-gray-500">این اسکریپت به طور خودکار Node.js و MySQL را روی سرور اوبونتو نصب می‌کند.</p>
+                 <p className="text-xs text-gray-500">این اسکریپت PM2، Node.js و MySQL را نصب و پیکربندی می‌کند.</p>
               </div>
 
               {/* Bot Code */}
@@ -515,15 +542,15 @@ echo "----------------------------------------------------"
               </div>
 
               <div>
-                <h3 className={labelClassName}>۳. اجرا</h3>
-                <div className="flex gap-4">
-                  <div className="flex-1 bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
-                    npm start
-                    <span className="text-gray-400 block mt-1">// اجرای پنل مدیریت</span>
+                <h3 className={labelClassName}>۳. مدیریت با PM2</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
+                    pm2 status
+                    <span className="text-gray-400 block mt-1">// مشاهده وضعیت ربات‌ها</span>
                   </div>
-                  <div className="flex-1 bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
-                    node bot.js
-                    <span className="text-gray-400 block mt-1">// اجرای ربات تلگرام</span>
+                  <div className="bg-gray-100 p-3 rounded-lg font-mono text-sm border border-gray-200 text-slate-700" dir="ltr">
+                    pm2 logs
+                    <span className="text-gray-400 block mt-1">// مشاهده لاگ‌ها و خطاها</span>
                   </div>
                 </div>
               </div>
