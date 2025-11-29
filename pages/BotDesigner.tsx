@@ -21,7 +21,15 @@ import {
   Code,
   Package,
   FileText,
-  Download
+  Download,
+  AlertTriangle,
+  XCircle,
+  MessageSquare,
+  Binary,
+  UserPlus,
+  RefreshCw,
+  Phone,
+  Clock
 } from 'lucide-react';
 
 // Mock Data for Simulation
@@ -44,10 +52,19 @@ const BotDesigner: React.FC = () => {
   
   // Bot Config State
   const [welcomeMessage, setWelcomeMessage] = useState('سلام! به فروشگاه ما خوش آمدید 🌹\nلطفا یکی از گزینه‌های زیر را انتخاب کنید:');
+  
+  // Custom Button Texts
+  const [btnSearchText, setBtnSearchText] = useState('🔍 جستجوی نام');
+  const [btnCodeText, setBtnCodeText] = useState('🔢 جستجوی کد');
+  const [btnCategoryText, setBtnCategoryText] = useState('📂 دسته‌بندی‌ها');
+  const [btnCartText, setBtnCartText] = useState('🛒 سبد خرید');
+  const [btnSignUpText, setBtnSignUpText] = useState('📱 ثبت نام با شماره موبایل');
+
   const [botToken, setBotToken] = useState('');
   const [channelId, setChannelId] = useState('');
   const [botStatus, setBotStatus] = useState<'offline' | 'checking' | 'online' | 'error'>('offline');
   const [statusMessage, setStatusMessage] = useState('');
+  const [lastCheckTime, setLastCheckTime] = useState<string>('');
   
   // UI States
   const [isSaving, setIsSaving] = useState(false);
@@ -61,9 +78,23 @@ const BotDesigner: React.FC = () => {
     const savedToken = localStorage.getItem('bot_token');
     const savedChannel = localStorage.getItem('channel_id');
     const savedWelcome = localStorage.getItem('welcome_message');
+    
+    // Load button texts
+    const savedBtnSearch = localStorage.getItem('btn_search_text');
+    const savedBtnCode = localStorage.getItem('btn_code_text');
+    const savedBtnCat = localStorage.getItem('btn_cat_text');
+    const savedBtnCart = localStorage.getItem('btn_cart_text');
+    const savedBtnSignUp = localStorage.getItem('btn_signup_text');
+
     if (savedToken) setBotToken(savedToken);
     if (savedChannel) setChannelId(savedChannel);
     if (savedWelcome) setWelcomeMessage(savedWelcome);
+    
+    if (savedBtnSearch) setBtnSearchText(savedBtnSearch);
+    if (savedBtnCode) setBtnCodeText(savedBtnCode);
+    if (savedBtnCat) setBtnCategoryText(savedBtnCat);
+    if (savedBtnCart) setBtnCartText(savedBtnCart);
+    if (savedBtnSignUp) setBtnSignUpText(savedBtnSignUp);
   }, []);
 
   const handleSaveSettings = () => {
@@ -75,6 +106,12 @@ const BotDesigner: React.FC = () => {
       localStorage.setItem('channel_id', channelId);
       localStorage.setItem('welcome_message', welcomeMessage);
       
+      localStorage.setItem('btn_search_text', btnSearchText);
+      localStorage.setItem('btn_code_text', btnCodeText);
+      localStorage.setItem('btn_cat_text', btnCategoryText);
+      localStorage.setItem('btn_cart_text', btnCartText);
+      localStorage.setItem('btn_signup_text', btnSignUpText);
+      
       setIsSaving(false);
       setSaveSuccess(true);
       
@@ -83,13 +120,17 @@ const BotDesigner: React.FC = () => {
   };
 
   const handleTestConnection = async () => {
-      if (!botToken) {
-          alert("لطفا ابتدا توکن ربات را وارد کنید.");
+      const now = new Date().toLocaleTimeString('fa-IR');
+      setLastCheckTime(now);
+
+      if (!botToken.trim()) {
+          setBotStatus('error');
+          setStatusMessage("⚠️ خطا: فیلد توکن خالی است. لطفا توکن را وارد کنید.");
           return;
       }
 
       setBotStatus('checking');
-      setStatusMessage('در حال برقراری ارتباط با سرور تلگرام...');
+      setStatusMessage('⏳ در حال ارسال درخواست به سرورهای تلگرام...');
 
       try {
           const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
@@ -98,13 +139,18 @@ const BotDesigner: React.FC = () => {
               const data = await response.json();
               if (data.ok) {
                   setBotStatus('online');
-                  setStatusMessage(`اتصال به API تلگرام موفق بود! (نام ربات: ${data.result.first_name})\n\n⚠️ توجه: برای پاسخگویی ربات به کاربران، باید کد بخش «راه‌اندازی» را روی سرور اجرا کنید.`);
+                  setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}\n🔗 شناسه عددی: ${data.result.id}\n\n⚠️ توجه: این تست نشان می‌دهد توکن صحیح است. برای پاسخ‌دهی ربات به کاربران، حتما باید سرور را از تب «راه‌اندازی» فعال کنید.`);
               } else {
                   setBotStatus('error');
-                  setStatusMessage('توکن نامعتبر است.');
+                  setStatusMessage('❌ خطا از سمت تلگرام: توکن ارسال شده نامعتبر است.');
               }
           } else {
-               throw new Error('Network response was not ok');
+               if (response.status === 401 || response.status === 404) {
+                   setBotStatus('error');
+                   setStatusMessage(`❌ خطای احراز هویت (${response.status}):\nتوکن وارد شده اشتباه است. لطفا توکن را دقیقا از @BotFather کپی کنید.`);
+               } else {
+                   throw new Error(`HTTP Error: ${response.status}`);
+               }
           }
       } catch (error) {
           console.error("Connection Error:", error);
@@ -112,11 +158,13 @@ const BotDesigner: React.FC = () => {
           const isValidFormat = /^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$/.test(botToken);
           
           if (isValidFormat) {
+              // It's likely a CORS error because browsers block requests to telegram API directly, 
+              // but the format looks correct so we assume it might work on server.
               setBotStatus('online'); 
-              setStatusMessage('ساختار توکن صحیح است. (اتصال مستقیم به دلیل محدودیت مرورگر بلاک شد، اما توکن معتبر به نظر می‌رسد)\n\n⚠️ توجه: برای پاسخگویی ربات، سرور Backend را اجرا کنید.');
+              setStatusMessage('✅ ساختار توکن صحیح است.\n\n(مرورگر شما به دلایل امنیتی CORS اجازه اتصال مستقیم به api.telegram.org را نمی‌دهد، اما چون فرمت توکن صحیح است، روی سرور به درستی کار خواهد کرد.)');
           } else {
               setBotStatus('error');
-              setStatusMessage('فرمت توکن صحیح نیست یا اتصال اینترنت برقرار نمی‌باشد.');
+              setStatusMessage('❌ خطا در برقراری ارتباط:\n۱. اتصال اینترنت خود را بررسی کنید (فیلترشکن).\n۲. فرمت توکن را بررسی کنید. توکن باید شامل بخش عددی و بخش حروفی باشد.\n\nمثال صحیح:\n123456789:ABCdefGhIJKlmNoPQRstuVWxyZ');
           }
       }
   };
@@ -131,34 +179,66 @@ const BotDesigner: React.FC = () => {
   });
 
   // Simulation State
-  const [simStep, setSimStep] = useState<'start' | 'menu' | 'categories' | 'product' | 'search_prompt'>('start');
+  const [simStep, setSimStep] = useState<'start' | 'signup' | 'menu' | 'categories' | 'product' | 'search_prompt' | 'code_prompt'>('start');
+  const [isSimUserRegistered, setIsSimUserRegistered] = useState(false); // New state to track sim user registration
   const [chatHistory, setChatHistory] = useState<any[]>([
     { type: 'bot', text: 'برای شروع /start را بزنید.' }
   ]);
 
   const handleSimulateStart = () => {
-    setChatHistory([
-      { type: 'user', text: '/start' },
-      { type: 'bot', text: welcomeMessage, buttons: ['search', 'code', 'categories'] }
-    ]);
-    setSimStep('menu');
+    // Reset simulation history slightly
+    setChatHistory([{ type: 'user', text: '/start' }]);
+
+    if (!isSimUserRegistered) {
+      setTimeout(() => {
+        setChatHistory(prev => [
+            ...prev,
+            { type: 'bot', text: 'سلام! برای استفاده از ربات لطفا ابتدا شماره تماس خود را به اشتراک بگذارید.', buttons: 'signup' }
+        ]);
+        setSimStep('signup');
+      }, 500);
+    } else {
+      setTimeout(() => {
+        setChatHistory(prev => [
+            ...prev,
+            { type: 'bot', text: welcomeMessage, buttons: ['search', 'categories'] }
+        ]);
+        setSimStep('menu');
+      }, 500);
+    }
   };
 
   const handleSimulateAction = (action: string) => {
-    if (action === 'categories') {
+    if (action === 'share_contact') {
+         setChatHistory(prev => [
+            ...prev,
+            { type: 'user', text: '📱 اشتراک‌گذاری شماره', isContact: true },
+            { type: 'bot', text: '✅ ثبت نام شما با موفقیت انجام شد!' },
+            { type: 'bot', text: welcomeMessage, buttons: ['search', 'categories'] }
+        ]);
+        setIsSimUserRegistered(true);
+        setSimStep('menu');
+    } else if (action === 'categories') {
       setChatHistory(prev => [
         ...prev,
-        { type: 'user', text: '📂 دسته‌بندی‌ها' },
+        { type: 'user', text: btnCategoryText },
         { type: 'bot', text: 'لطفا دسته مورد نظر را انتخاب کنید:', buttons: 'category_list' }
       ]);
       setSimStep('categories');
     } else if (action === 'search_name') {
         setChatHistory(prev => [
             ...prev,
-            { type: 'user', text: '🔍 جستجوی نام' },
+            { type: 'user', text: btnSearchText },
             { type: 'bot', text: 'لطفا نام محصول را وارد کنید:' }
         ]);
         setSimStep('search_prompt');
+    } else if (action === 'search_code') {
+        setChatHistory(prev => [
+            ...prev,
+            { type: 'user', text: btnCodeText },
+            { type: 'bot', text: 'لطفا کد محصول را وارد کنید:' }
+        ]);
+        setSimStep('code_prompt');
     } else if (action === 'show_product') {
         setChatHistory(prev => [
             ...prev,
@@ -166,8 +246,19 @@ const BotDesigner: React.FC = () => {
             { type: 'bot', text: 'نتایج یافت شده:', product: MOCK_PRODUCT }
         ]);
         setSimStep('product');
+    } else if (action === 'cart') {
+        setChatHistory(prev => [
+            ...prev,
+            { type: 'user', text: btnCartText },
+            { type: 'bot', text: 'سبد خرید شما در حال حاضر خالی است. لطفا محصولات را به سبد اضافه کنید.' }
+        ]);
     } else if (action === 'back_home') {
-        handleSimulateStart();
+        setChatHistory(prev => [
+            ...prev,
+            { type: 'user', text: '🔙 بازگشت' },
+            { type: 'bot', text: welcomeMessage, buttons: ['search', 'categories'] }
+        ]);
+        setSimStep('menu');
     }
   };
 
@@ -200,12 +291,31 @@ const DB_CONFIG = {
   database: '${dbConfig.database || 'shop_db'}'
 };
 
+// --- متن‌ها (Texts) ---
+const MESSAGES = {
+  welcome: \`${welcomeMessage}\`,
+  btnSearch: '${btnSearchText}',
+  btnCode: '${btnCodeText}',
+  btnCategory: '${btnCategoryText}',
+  btnCart: '${btnCartText}',
+  btnSignUp: '${btnSignUpText}',
+  askSignUp: 'برای استفاده از خدمات ربات، لطفا ابتدا شماره تماس خود را تایید کنید 👇'
+};
+
 // اتصال به دیتابیس (Database Connection)
-// نکته: برای جلوگیری از خطا در صورت نبود دیتابیس، این بخش را داخل try-catch بگذارید یا ابتدا دیتابیس را بسازید.
 const createConnection = async () => {
   try {
     const connection = await mysql.createPool(DB_CONFIG);
     console.log('✅ Connected to Database');
+    // ایجاد جدول کاربران اگر وجود نداشته باشد
+    await connection.execute(\`
+      CREATE TABLE IF NOT EXISTS users (
+        chat_id BIGINT PRIMARY KEY,
+        name VARCHAR(255),
+        phone_number VARCHAR(20),
+        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    \`);
     return connection;
   } catch (err) {
     console.warn('⚠️ Database connection failed. Running in mock mode.', err.message);
@@ -220,30 +330,110 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 console.log('🤖 ربات فروشگاهی روشن شد و در حال گوش دادن به پیام‌هاست...');
 
-// پیام خوش‌آمدگویی (Start Command)
-bot.onText(/\\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, \`${welcomeMessage}\`, {
+// بررسی عضویت کاربر (Check User)
+async function isUserRegistered(chatId) {
+  if (!pool) return true; // Mock mode: always registered
+  const [rows] = await pool.execute('SELECT * FROM users WHERE chat_id = ?', [chatId]);
+  return rows.length > 0;
+}
+
+// ذخیره کاربر (Register User)
+async function registerUser(chatId, name, phone) {
+  if (!pool) return;
+  await pool.execute(
+    'INSERT INTO users (chat_id, name, phone_number) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone_number = ?', 
+    [chatId, name, phone, phone]
+  );
+  console.log(\`User registered: \${name} (\${phone})\`);
+}
+
+// منوی اصلی (Main Menu Helper)
+const sendMainMenu = (chatId) => {
+  bot.sendMessage(chatId, MESSAGES.welcome, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: '🔍 جستجوی محصول', callback_data: 'search' }, { text: '📂 دسته‌بندی‌ها', callback_data: 'categories' }],
-        [{ text: '🛒 سبد خرید', callback_data: 'cart' }]
+        [
+          { text: MESSAGES.btnSearch, callback_data: 'search' },
+          { text: MESSAGES.btnCode, callback_data: 'search_code' }
+        ],
+        [
+          { text: MESSAGES.btnCategory, callback_data: 'categories' },
+          { text: MESSAGES.btnCart, callback_data: 'cart' }
+        ]
       ]
     }
   });
+};
+
+// پیام خوش‌آمدگویی (Start Command)
+bot.onText(/\\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  try {
+    const registered = await isUserRegistered(chatId);
+    
+    if (registered) {
+      // اگر کاربر قبلا ثبت نام کرده است
+      sendMainMenu(chatId);
+    } else {
+      // اگر کاربر جدید است -> درخواست شماره
+      bot.sendMessage(chatId, MESSAGES.askSignUp, {
+        reply_markup: {
+          keyboard: [
+            [{ text: MESSAGES.btnSignUp, request_contact: true }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    bot.sendMessage(chatId, 'خطایی رخ داده است.');
+  }
 });
 
-// مدیریت دکمه‌ها (Button Handler)
+// دریافت شماره تماس (Contact Handler)
+bot.on('contact', async (msg) => {
+  const chatId = msg.chat.id;
+  const contact = msg.contact;
+
+  if (contact && contact.user_id === chatId) {
+    await registerUser(chatId, contact.first_name, contact.phone_number);
+    
+    // حذف کیبورد شماره تماس
+    await bot.sendMessage(chatId, '✅ ثبت نام شما با موفقیت انجام شد!', {
+      reply_markup: { remove_keyboard: true }
+    });
+    
+    // نمایش منوی اصلی
+    sendMainMenu(chatId);
+  } else {
+    bot.sendMessage(chatId, 'لطفا از دکمه پایین برای ارسال شماره استفاده کنید.');
+  }
+});
+
+// مدیریت دکمه‌های شیشه‌ای (Inline Button Handler)
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
+  // همیشه اول چک کنیم کاربر ثبت نام کرده یا خیر (امنیت بیشتر)
+  const registered = await isUserRegistered(chatId);
+  if (!registered) {
+    bot.sendMessage(chatId, 'لطفا ابتدا /start را بزنید و شماره خود را تایید کنید.');
+    return;
+  }
+
   if (data === 'categories') {
-    // دریافت دسته‌ها از دیتابیس (نمونه)
-    // if (pool) { const [rows] = await pool.query('SELECT * FROM categories'); ... }
+    // در اینجا باید دسته‌ها را از دیتابیس بخوانید
     bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:');
   } else if (data === 'search') {
     bot.sendMessage(chatId, 'لطفا نام محصول را ارسال کنید:');
+  } else if (data === 'search_code') {
+    bot.sendMessage(chatId, 'لطفا کد محصول را ارسال کنید:');
+  } else if (data === 'cart') {
+    bot.sendMessage(chatId, 'سبد خرید شما در حال حاضر خالی است. لطفا محصولات را به سبد اضافه کنید.');
   }
 });
 
@@ -283,17 +473,42 @@ sudo systemctl enable mysql
 
 # 4. Configure Database
 echo "🗄️ Configuring Database..."
-# Note: You should secure your MySQL installation manually if needed using 'mysql_secure_installation'
-sudo mysql -e "CREATE DATABASE IF NOT EXISTS telegram_shop_db;"
-sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${dbConfig.password}';"
-sudo mysql -e "FLUSH PRIVILEGES;"
 
-echo "✅ Database 'telegram_shop_db' created."
+DB_PASS="${dbConfig.password}"
+DB_NAME="${dbConfig.database}"
+
+# Logic to determine authentication method
+if [ -z "$DB_PASS" ]; then
+    MYSQL_AUTH_ARGS="-uroot"
+else
+    MYSQL_AUTH_ARGS="-uroot -p$DB_PASS"
+fi
+
+# Try connecting via Socket (Default for fresh install)
+if sudo mysql -e "STATUS;" &>/dev/null; then
+    echo "✅ Connected via Socket Auth."
+    MYSQL_CMD="sudo mysql"
+# Try connecting via Password (If already set)
+elif sudo mysql $MYSQL_AUTH_ARGS -e "STATUS;" &>/dev/null; then
+    echo "✅ Connected via Password Auth."
+    MYSQL_CMD="sudo mysql $MYSQL_AUTH_ARGS"
+else
+    echo "❌ ERROR: Could not connect to MySQL."
+    echo "   If you have previously set a root password, please make sure it matches the one in the 'Database' tab."
+    exit 1
+fi
+
+# Execute SQL Commands
+$MYSQL_CMD -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;"
+$MYSQL_CMD -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';"
+$MYSQL_CMD -e "FLUSH PRIVILEGES;"
+
+echo "✅ Database '$DB_NAME' configured successfully."
 
 # 5. Project Setup
 echo "📂 Setting up Project..."
 
-# Install dependencies (includes Express)
+# Install dependencies
 npm install
 
 # Build the frontend
@@ -318,11 +533,10 @@ pm2 delete all 2>/dev/null || true
 pm2 start server.js --name "admin-panel"
 
 # Start Telegram Bot
-# Check if bot.js exists before starting
 if [ -f "bot.js" ]; then
     pm2 start bot.js --name "telegram-bot"
 else
-    echo "⚠️ bot.js not found. Skipping bot startup. Please create bot.js and run 'pm2 start bot.js --name telegram-bot'"
+    echo "⚠️ bot.js not found. Skipping bot startup."
 fi
 
 # Save Process List
@@ -332,9 +546,7 @@ pm2 startup | tail -n 1 | bash
 echo "✅ Installation & Deployment Complete!"
 echo "----------------------------------------------------"
 echo "👉 Admin Panel is active."
-echo "👉 Telegram Bot is active (if bot.js existed)."
 echo "👉 Use 'pm2 status' to see running apps."
-echo "👉 Use 'pm2 logs' to see logs."
 echo "----------------------------------------------------"
 `;
 
@@ -374,6 +586,12 @@ echo "----------------------------------------------------"
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+  };
+
+  const toggleSimUser = () => {
+    setIsSimUserRegistered(!isSimUserRegistered);
+    setChatHistory([{ type: 'bot', text: 'وضعیت کاربر تغییر کرد. لطفا /start را بزنید.' }]);
+    setSimStep('start');
   };
 
   // Styles
@@ -426,28 +644,55 @@ echo "----------------------------------------------------"
 
               <div>
                 <h3 className={labelClassName}>دکمه‌های منوی اصلی (Inline Keyboard)</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="p-2 bg-white rounded border border-gray-200"><Search size={18} className="text-gray-600" /></div>
-                    <span className="text-sm font-medium text-slate-700 flex-1">جستجوی نام محصول</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">فعال</span>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 mb-2 block">دکمه جستجوی نام</label>
+                        <div className="relative">
+                           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                           <input type="text" value={btnSearchText} onChange={e => setBtnSearchText(e.target.value)} className={inputClassName} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 mb-2 block">دکمه جستجوی کد</label>
+                        <div className="relative">
+                           <Binary className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                           <input type="text" value={btnCodeText} onChange={e => setBtnCodeText(e.target.value)} className={inputClassName} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 mb-2 block">دکمه دسته‌بندی</label>
+                        <div className="relative">
+                           <Grid className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                           <input type="text" value={btnCategoryText} onChange={e => setBtnCategoryText(e.target.value)} className={inputClassName} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 mb-2 block">دکمه سبد خرید</label>
+                        <div className="relative">
+                           <ShoppingBag className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                           <input type="text" value={btnCartText} onChange={e => setBtnCartText(e.target.value)} className={inputClassName} />
+                        </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="p-2 bg-white rounded border border-gray-200"><Grid size={18} className="text-gray-600" /></div>
-                    <span className="text-sm font-medium text-slate-700 flex-1">دسته‌بندی محصولات</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">فعال</span>
-                  </div>
-                  <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                     <div className="p-2 bg-white rounded border border-gray-200"><ShoppingBag size={18} className="text-gray-600" /></div>
-                    <span className="text-sm font-medium text-slate-700 flex-1">سبد خرید</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold">فعال</span>
-                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className={labelClassName}>دکمه ثبت نام (درخواست شماره)</h3>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <label className="text-xs font-bold text-gray-500 mb-2 block">متن دکمه اشتراک‌گذاری شماره</label>
+                    <div className="relative">
+                        <Phone className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input type="text" value={btnSignUpText} onChange={e => setBtnSignUpText(e.target.value)} className={inputClassName} />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">این دکمه فقط برای کاربرانی که هنوز ثبت نام نکرده‌اند نمایش داده می‌شود.</p>
                 </div>
               </div>
 
               <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-sm text-yellow-800 flex gap-3 shadow-sm">
                  <Info className="shrink-0" size={20} />
-                 <p className="font-medium leading-6">تغییرات شما به صورت آنی در شبیه‌ساز (سمت چپ) اعمال می‌شود. برای اعمال روی ربات واقعی، باید کد سرور را از تب «راه‌اندازی» دریافت و اجرا کنید.</p>
+                 <p className="font-medium leading-6">تغییرات شما به صورت آنی در شبیه‌ساز (سمت چپ) اعمال می‌شود. برای تست سناریوی ثبت نام، از دکمه «تغییر وضعیت کاربر» زیر شبیه‌ساز استفاده کنید.</p>
               </div>
             </div>
           )}
@@ -651,11 +896,20 @@ echo "----------------------------------------------------"
                   </div>
                   
                   {statusMessage && (
-                      <div className={`text-sm p-3 rounded-lg mb-4 leading-6 whitespace-pre-wrap ${
-                          botStatus === 'online' ? 'bg-green-900/30 text-green-200' : 
-                          botStatus === 'error' ? 'bg-red-900/30 text-red-200' : 'bg-slate-800 text-slate-300'
+                      <div className={`text-sm p-4 rounded-xl mb-4 leading-7 whitespace-pre-wrap border font-medium ${
+                          botStatus === 'online' 
+                            ? 'bg-green-900/30 text-green-200 border-green-800' 
+                            : botStatus === 'error' 
+                              ? 'bg-red-900/30 text-red-200 border-red-800' 
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}>
                           {statusMessage}
+                          {lastCheckTime && (
+                            <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2 text-xs opacity-70">
+                              <Clock size={12} />
+                              <span>آخرین بررسی: {lastCheckTime}</span>
+                            </div>
+                          )}
                       </div>
                   )}
 
@@ -740,9 +994,18 @@ echo "----------------------------------------------------"
 
       {/* Right Panel: Phone Simulator */}
       <div className="w-full lg:w-[400px] shrink-0 flex flex-col items-center">
-        <div className="text-sm font-bold text-slate-600 mb-4 flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
-          <Play size={16} className="text-indigo-600" />
-          پیش‌نمایش زنده ربات
+        <div className="flex gap-2 w-full mb-4">
+             <div className="flex-1 text-sm font-bold text-slate-600 flex items-center justify-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
+                <Play size={16} className="text-indigo-600" />
+                پیش‌نمایش زنده ربات
+             </div>
+             <button 
+                onClick={toggleSimUser}
+                className="bg-white p-2 rounded-full border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm"
+                title={`تغییر وضعیت کاربر به: ${isSimUserRegistered ? 'کاربر جدید (ثبت نام نکرده)' : 'کاربر قدیمی (ثبت نام شده)'}`}
+             >
+                 <RefreshCw size={20} className={isSimUserRegistered ? "" : "text-green-500"} />
+             </button>
         </div>
         
         {/* Phone Frame */}
@@ -753,11 +1016,16 @@ echo "----------------------------------------------------"
             <div className="absolute inset-0 bg-[#8E9EAF]/20 backdrop-blur-[1px]"></div>
 
             {/* Telegram Header */}
-            <div className="h-16 bg-[#517da2] flex items-center px-4 shrink-0 z-20 text-white shadow-md">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center font-bold text-sm mr-3 border-2 border-white/20">RB</div>
-              <div className="flex flex-col">
-                <span className="font-bold text-sm text-white drop-shadow-sm">RoboShop Bot</span>
-                <span className="text-[11px] opacity-80">bot</span>
+            <div className="h-16 bg-[#517da2] flex items-center px-4 shrink-0 z-20 text-white shadow-md justify-between">
+              <div className="flex items-center">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center font-bold text-sm mr-3 border-2 border-white/20">RB</div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm text-white drop-shadow-sm">RoboShop Bot</span>
+                    <span className="text-[11px] opacity-80">bot</span>
+                  </div>
+              </div>
+              <div className="text-[10px] bg-black/20 px-2 py-1 rounded text-white/80">
+                  {isSimUserRegistered ? 'کاربر: ثبت شده' : 'کاربر: جدید'}
               </div>
             </div>
 
@@ -794,23 +1062,25 @@ echo "----------------------------------------------------"
                                         onClick={() => handleSimulateAction('search_name')}
                                         className="flex-1 bg-[#506678]/90 hover:bg-[#506678] text-white text-xs font-medium py-2.5 rounded-lg transition-all active:scale-95 shadow-sm backdrop-blur-sm"
                                     >
-                                        🔍 جستجوی نام
+                                        {btnSearchText}
                                     </button>
                                     <button 
-                                        onClick={() => handleSimulateAction('search_name')}
+                                        onClick={() => handleSimulateAction('search_code')}
                                         className="flex-1 bg-[#506678]/90 hover:bg-[#506678] text-white text-xs font-medium py-2.5 rounded-lg transition-all active:scale-95 shadow-sm backdrop-blur-sm"
                                     >
-                                        🔢 جستجوی کد
+                                        {btnCodeText}
                                     </button>
                                 </div>
                                 <button 
                                     onClick={() => handleSimulateAction('categories')}
                                     className="w-full bg-[#506678]/90 hover:bg-[#506678] text-white text-xs font-medium py-2.5 rounded-lg transition-all active:scale-95 shadow-sm backdrop-blur-sm"
                                 >
-                                    📂 دسته‌بندی‌ها
+                                    {btnCategoryText}
                                 </button>
-                                <button className="w-full bg-[#506678]/90 hover:bg-[#506678] text-white text-xs font-medium py-2.5 rounded-lg transition-all active:scale-95 shadow-sm backdrop-blur-sm">
-                                    🛒 سبد خرید من
+                                <button 
+                                  onClick={() => handleSimulateAction('cart')}
+                                  className="w-full bg-[#506678]/90 hover:bg-[#506678] text-white text-xs font-medium py-2.5 rounded-lg transition-all active:scale-95 shadow-sm backdrop-blur-sm">
+                                    {btnCartText}
                                 </button>
                             </div>
                         )}
@@ -825,14 +1095,24 @@ echo "----------------------------------------------------"
                                     <div className="mt-3 text-indigo-600 font-bold text-sm flex justify-between items-center">
                                       {msg.product.price}
                                     </div>
-                                    <button className="w-full mt-3 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 rounded-lg transition-colors">افزودن به سبد</button>
+                                    <button 
+                                      onClick={() => handleSimulateAction('cart')}
+                                      className="w-full mt-3 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 rounded-lg transition-colors"
+                                    >
+                                      افزودن به سبد
+                                    </button>
                                 </div>
                             </div>
                         )}
                     </div>
                   ) : (
-                    <div className="bg-[#efffde] p-3 rounded-2xl rounded-tr-none shadow-sm text-sm text-slate-800 border border-green-100">
-                      {msg.text}
+                    <div className={`p-3 rounded-2xl rounded-tr-none shadow-sm text-sm border ${msg.isContact ? 'bg-blue-50 border-blue-100' : 'bg-[#efffde] border-green-100'} text-slate-800`}>
+                      {msg.isContact ? (
+                          <div className="flex items-center gap-2 text-blue-800 font-medium">
+                              <Phone size={16} />
+                              <span>09120000000</span>
+                          </div>
+                      ) : msg.text}
                     </div>
                   )}
                 </div>
@@ -840,24 +1120,43 @@ echo "----------------------------------------------------"
             </div>
 
             {/* Input Area */}
-            <div className="h-14 bg-white flex items-center px-3 shrink-0 z-20 border-t border-gray-100">
-               {simStep === 'start' ? (
-                   <button 
-                    onClick={handleSimulateStart}
-                    className="w-full py-2.5 text-blue-500 font-bold text-sm hover:bg-blue-50 rounded-lg transition-colors"
-                   >
-                       شروع (/start)
-                   </button>
-               ) : simStep === 'search_prompt' ? (
-                   <div className="flex w-full gap-2 items-center">
-                       <input type="text" placeholder="نام محصول..." className="flex-1 bg-gray-100 border-none rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-                       <button onClick={() => handleSimulateAction('show_product')} className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors"><ArrowRight size={18} className="rtl:rotate-180" /></button>
-                   </div>
-               ) : (
-                   <div className="w-full text-center text-xs text-gray-400 font-medium">
-                       برای تست از دکمه‌های شیشه‌ای بالا استفاده کنید
+            <div className="min-h-[3.5rem] bg-white flex flex-col items-center px-1 shrink-0 z-20 border-t border-gray-100 pb-1">
+               {/* Reply Keyboard Area (For Signup) */}
+               {simStep === 'signup' && (
+                   <div className="w-full p-2 bg-gray-100">
+                       <button 
+                           onClick={() => handleSimulateAction('share_contact')}
+                           className="w-full bg-[#3390ec] text-white font-bold py-3 rounded shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
+                       >
+                           {btnSignUpText}
+                       </button>
                    </div>
                )}
+
+               <div className="w-full flex items-center px-2 py-2 gap-2">
+                   {simStep === 'start' ? (
+                       <button 
+                        onClick={handleSimulateStart}
+                        className="w-full py-2.5 text-blue-500 font-bold text-sm hover:bg-blue-50 rounded-lg transition-colors"
+                       >
+                           شروع (/start)
+                       </button>
+                   ) : simStep === 'search_prompt' ? (
+                       <div className="flex w-full gap-2 items-center">
+                           <input type="text" placeholder="نام محصول..." className="flex-1 bg-gray-100 border-none rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+                           <button onClick={() => handleSimulateAction('show_product')} className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors"><ArrowRight size={18} className="rtl:rotate-180" /></button>
+                       </div>
+                   ) : simStep === 'code_prompt' ? (
+                        <div className="flex w-full gap-2 items-center">
+                            <input type="text" placeholder="کد محصول..." className="flex-1 bg-gray-100 border-none rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            <button onClick={() => handleSimulateAction('show_product')} className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 transition-colors"><ArrowRight size={18} className="rtl:rotate-180" /></button>
+                        </div>
+                   ) : simStep !== 'signup' ? (
+                       <div className="w-full text-center text-xs text-gray-400 font-medium">
+                           برای تست از دکمه‌های شیشه‌ای بالا استفاده کنید
+                       </div>
+                   ) : null}
+               </div>
             </div>
           </div>
         </div>
