@@ -1,68 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud, Loader2 } from 'lucide-react';
 import { Product } from '../types';
 import { generateProductDescription } from '../services/geminiService';
 
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: 'هدفون بی‌سیم مدل X2',
-    category: 'الکترونیک',
-    price: 1200000,
-    stock: 15,
-    description: 'هدفون با کیفیت صدای عالی و باتری قوی...',
-    imageUrl: 'https://picsum.photos/100/100?random=1'
-  },
-  {
-    id: '2',
-    name: 'ساعت هوشمند سری ۵',
-    category: 'گجت',
-    price: 3500000,
-    stock: 4,
-    description: 'ساعت هوشمند ضد آب با قابلیت مکالمه...',
-    imageUrl: 'https://picsum.photos/100/100?random=2'
-  },
-];
-
-const INITIAL_CATEGORIES = ['الکترونیک', 'گجت', 'پوشاک', 'خانه و آشپزخانه'];
-
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
+  const [categories, setCategories] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
   const [loadingAI, setLoadingAI] = useState(false);
   const [channelId, setChannelId] = useState('');
-
-  // Category Management State
   const [newCategoryName, setNewCategoryName] = useState('');
-
-  useEffect(() => {
-    // Load from Local Storage
-    const savedProducts = localStorage.getItem('products');
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    } else {
-      setProducts(MOCK_PRODUCTS);
-    }
-
-    const savedChannel = localStorage.getItem('channel_id');
-    if (savedChannel) setChannelId(savedChannel);
-    
-    const savedCategories = localStorage.getItem('categories');
-    if (savedCategories) setCategories(JSON.parse(savedCategories));
-  }, []);
-
-  const saveProducts = (newProducts: Product[]) => {
-    setProducts(newProducts);
-    localStorage.setItem('products', JSON.stringify(newProducts));
-  };
-
-  const saveCategories = (newCategories: string[]) => {
-    setCategories(newCategories);
-    localStorage.setItem('categories', JSON.stringify(newCategories));
-  };
 
   // Form State
   const [currentProduct, setCurrentProduct] = useState<Partial<Product>>({
@@ -73,6 +23,30 @@ const Products: React.FC = () => {
     description: '',
     imageUrl: ''
   });
+
+  const fetchData = async () => {
+      setLoading(true);
+      try {
+          // Fetch Products
+          const prodRes = await fetch('/api/products');
+          if (prodRes.ok) setProducts(await prodRes.json());
+          
+          // Fetch Categories
+          const catRes = await fetch('/api/categories');
+          if (catRes.ok) setCategories(await catRes.json());
+          
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const savedChannel = localStorage.getItem('channel_id');
+    if (savedChannel) setChannelId(savedChannel);
+  }, []);
 
   const handleOpenModal = (product?: Product) => {
     if (product) {
@@ -105,27 +79,44 @@ const Products: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    let updatedProducts;
-    if (currentProduct.id) {
-      // Edit
-      updatedProducts = products.map(p => p.id === currentProduct.id ? currentProduct as Product : p);
-    } else {
-      // Add
-      updatedProducts = [...products, { 
-        ...currentProduct, 
-        id: Date.now().toString(), 
-        imageUrl: currentProduct.imageUrl || 'https://picsum.photos/100/100' // Default if empty
-      } as Product];
+  const handleSave = async () => {
+    try {
+        const payload = { 
+            ...currentProduct, 
+            imageUrl: currentProduct.imageUrl || 'https://picsum.photos/100/100'
+        };
+
+        if (currentProduct.id) {
+            // Edit
+            await fetch(`/api/products/${currentProduct.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } else {
+            // Add
+            payload.id = Date.now().toString(); // Simple ID generation
+            await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+        await fetchData();
+        setIsModalOpen(false);
+    } catch (err) {
+        alert('خطا در ذخیره محصول');
     }
-    saveProducts(updatedProducts);
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('آیا از حذف این محصول اطمینان دارید؟')) {
-      const updatedProducts = products.filter(p => p.id !== id);
-      saveProducts(updatedProducts);
+      try {
+          await fetch(`/api/products/${id}`, { method: 'DELETE' });
+          await fetchData();
+      } catch (err) {
+          alert('خطا در حذف محصول');
+      }
     }
   };
 
@@ -134,38 +125,35 @@ const Products: React.FC = () => {
       alert('لطفا ابتدا آیدی کانال را در بخش "طراحی ربات > تنظیمات" وارد کنید.');
       return;
     }
-    
-    // Simulate API Call
     const confirmSend = confirm(`آیا مطمئن هستید که می‌خواهید محصول "${product.name}" را به کانال ${channelId} ارسال کنید؟`);
     if (confirmSend) {
-      alert(`✅ محصول با موفقیت به کانال ${channelId} ارسال شد.\n\n(این یک شبیه‌سازی است)`);
+      alert(`✅ محصول با موفقیت به کانال ${channelId} ارسال شد.\n\n(نیاز به اجرای ربات روی سرور)`);
     }
   };
 
-  // Category Management Functions
+  // Note: Categories are currently derived from products in the DB view, 
+  // but for UX we keep them in frontend state or use a separate table if needed.
+  // For now, we will just add to state so they appear in dropdowns.
   const handleAddCategory = () => {
     if (newCategoryName && !categories.includes(newCategoryName)) {
-      saveCategories([...categories, newCategoryName]);
+      setCategories([...categories, newCategoryName]);
       setNewCategoryName('');
     }
   };
 
-  const handleDeleteCategory = (cat: string) => {
-    if (confirm(`آیا از حذف دسته "${cat}" مطمئن هستید؟`)) {
-      saveCategories(categories.filter(c => c !== cat));
-    }
-  };
-
   const filteredProducts = products.filter(p => 
-    p.name.includes(searchTerm) || p.category.includes(searchTerm)
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    p.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
 
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">مدیریت محصولات</h1>
-          <p className="text-gray-500 mt-1">افزودن، ویرایش و مدیریت موجودی کالاها</p>
+          <p className="text-gray-500 mt-1">افزودن، ویرایش و مدیریت موجودی کالاها (دیتابیس)</p>
         </div>
         
         <div className="flex gap-2">
@@ -229,7 +217,7 @@ const Products: React.FC = () => {
                       {product.category}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{product.price.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-gray-600">{Number(product.price).toLocaleString()}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       product.stock > 10 ? 'bg-green-100 text-green-700' : 
@@ -297,9 +285,6 @@ const Products: React.FC = () => {
                  {categories.map(cat => (
                    <div key={cat} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-100">
                      <span className="text-sm text-gray-700">{cat}</span>
-                     <button onClick={() => handleDeleteCategory(cat)} className="text-red-500 hover:text-red-700">
-                       <Trash2 size={16} />
-                     </button>
                    </div>
                  ))}
                </div>

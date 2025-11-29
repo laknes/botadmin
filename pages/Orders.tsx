@@ -1,13 +1,6 @@
-import React from 'react';
-import { Search, Eye, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Eye, Filter, Loader2 } from 'lucide-react';
 import { Order } from '../types';
-
-const MOCK_ORDERS: Order[] = [
-  { id: 'ORD-1001', customerName: 'علی محمدی', total: 1200000, status: 'completed', date: '1403/02/10', items: 2 },
-  { id: 'ORD-1002', customerName: 'سارا احمدی', total: 3500000, status: 'pending', date: '1403/02/11', items: 1 },
-  { id: 'ORD-1003', customerName: 'رضا کریمی', total: 850000, status: 'cancelled', date: '1403/02/09', items: 3 },
-  { id: 'ORD-1004', customerName: 'مریم حسینی', total: 2100000, status: 'pending', date: '1403/02/12', items: 2 },
-];
 
 const statusStyles = {
   completed: 'bg-green-100 text-green-700',
@@ -22,11 +15,32 @@ const statusLabels = {
 };
 
 const Orders: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+      const fetchOrders = async () => {
+          try {
+              const response = await fetch('/api/orders');
+              if (response.ok) {
+                  setOrders(await response.json());
+              }
+          } catch (error) {
+              console.error("Failed to fetch orders", error);
+          } finally {
+              setLoading(false);
+          }
+      };
+      fetchOrders();
+  }, []);
+
+  if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">مدیریت سفارشات</h1>
-        <p className="text-gray-500 mt-1">لیست سفارشات ثبت شده از طریق ربات تلگرام</p>
+        <p className="text-gray-500 mt-1">لیست سفارشات ثبت شده از طریق ربات تلگرام (دیتابیس)</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -47,6 +61,9 @@ const Orders: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
+          {orders.length === 0 ? (
+             <div className="p-8 text-center text-gray-500">هنوز سفارشی ثبت نشده است.</div>
+          ) : (
           <table className="w-full text-right">
             <thead className="bg-gray-50 text-gray-600 font-medium text-sm">
               <tr>
@@ -59,15 +76,15 @@ const Orders: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {MOCK_ORDERS.map((order) => (
+              {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 font-mono text-slate-600 text-sm">{order.id}</td>
                   <td className="px-6 py-4 font-medium text-slate-800">{order.customerName}</td>
                   <td className="px-6 py-4 text-gray-500">{order.date}</td>
                   <td className="px-6 py-4 text-slate-800 font-bold">{order.total.toLocaleString()} تومان</td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[order.status]}`}>
-                      {statusLabels[order.status]}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyles[order.status] || 'bg-gray-100'}`}>
+                      {statusLabels[order.status] || order.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -79,6 +96,7 @@ const Orders: React.FC = () => {
               ))}
             </tbody>
           </table>
+          )}
         </div>
         
         {/* Pagination Mock */}
