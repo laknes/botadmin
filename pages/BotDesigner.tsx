@@ -5,31 +5,13 @@ import {
   Smartphone, 
   Play, 
   Save, 
-  Search, 
-  Grid, 
-  ShoppingBag,
-  ArrowRight,
-  Hash,
-  Key,
-  Wifi,
-  Info,
   CheckCircle,
   Loader2,
-  Terminal,
   Copy,
   Server,
-  Code,
-  Package,
-  FileText,
   Download,
-  AlertTriangle,
-  XCircle,
-  MessageSquare,
-  Binary,
-  UserPlus,
-  RefreshCw,
-  Phone,
-  Clock
+  Wifi,
+  RefreshCw
 } from 'lucide-react';
 
 const MOCK_PRODUCT = {
@@ -56,17 +38,11 @@ const BotDesigner: React.FC = () => {
   const [channelId, setChannelId] = useState('');
   const [botStatus, setBotStatus] = useState<'offline' | 'checking' | 'online' | 'error'>('offline');
   const [statusMessage, setStatusMessage] = useState('');
-  const [lastCheckTime, setLastCheckTime] = useState<string>('');
   
   // UI States
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedInstall, setCopiedInstall] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
-
-  // Categories for Simulator
-  const [simCategories, setSimCategories] = useState<{id: string, title: string}[]>([]);
 
   // Database Config State
   const [dbConfig, setDbConfig] = useState({
@@ -77,85 +53,77 @@ const BotDesigner: React.FC = () => {
     database: 'telegram_shop_db'
   });
 
-  // Load settings from local storage
+  // Load settings from Server API
   useEffect(() => {
-    const savedToken = localStorage.getItem('bot_token');
-    const savedChannel = localStorage.getItem('channel_id');
-    const savedWelcome = localStorage.getItem('welcome_message');
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch('/api/settings');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.bot_token) setBotToken(data.bot_token);
+                if (data.channel_id) setChannelId(data.channel_id);
+                if (data.welcome_message) setWelcomeMessage(data.welcome_message);
+                if (data.btn_search_text) setBtnSearchText(data.btn_search_text);
+                if (data.btn_code_text) setBtnCodeText(data.btn_code_text);
+                if (data.btn_cat_text) setBtnCategoryText(data.btn_cat_text);
+                if (data.btn_cart_text) setBtnCartText(data.btn_cart_text);
+                if (data.btn_signup_text) setBtnSignUpText(data.btn_signup_text);
+            }
+        } catch (e) {
+            console.error("Failed to load settings from server", e);
+        }
+    };
     
-    // Load button texts
-    const savedBtnSearch = localStorage.getItem('btn_search_text');
-    const savedBtnCode = localStorage.getItem('btn_code_text');
-    const savedBtnCat = localStorage.getItem('btn_cat_text');
-    const savedBtnCart = localStorage.getItem('btn_cart_text');
-    const savedBtnSignUp = localStorage.getItem('btn_signup_text');
-    
-    // Load DB Config
+    // Load Local Settings (DB Config)
     const savedDbConfig = localStorage.getItem('db_config');
-
-    if (savedToken) setBotToken(savedToken);
-    if (savedChannel) setChannelId(savedChannel);
-    if (savedWelcome) setWelcomeMessage(savedWelcome);
-    
-    if (savedBtnSearch) setBtnSearchText(savedBtnSearch);
-    if (savedBtnCode) setBtnCodeText(savedBtnCode);
-    if (savedBtnCat) setBtnCategoryText(savedBtnCat);
-    if (savedBtnCart) setBtnCartText(savedBtnCart);
-    if (savedBtnSignUp) setBtnSignUpText(savedBtnSignUp);
-    
     if (savedDbConfig) {
         try {
             setDbConfig(JSON.parse(savedDbConfig));
-        } catch (e) {
-            console.error("Failed to parse saved DB config");
-        }
+        } catch (e) {}
     }
 
-    // Load Categories for Simulator
-    const savedCats = localStorage.getItem('categories');
-    if (savedCats) {
-        const parsed = JSON.parse(savedCats);
-        setSimCategories(parsed.map((c: string, i: number) => ({ id: i.toString(), title: c })));
-    } else {
-        // Fallback defaults
-        setSimCategories([
-            { id: '1', title: 'الکترونیک' },
-            { id: '2', title: 'گجت' }
-        ]);
-    }
+    fetchSettings();
   }, []);
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     setIsSaving(true);
     setSaveSuccess(false);
 
-    setTimeout(() => {
-      // Save Bot Config
-      localStorage.setItem('bot_token', botToken);
-      localStorage.setItem('channel_id', channelId);
-      localStorage.setItem('welcome_message', welcomeMessage);
-      
-      // Save Button Texts
-      localStorage.setItem('btn_search_text', btnSearchText);
-      localStorage.setItem('btn_code_text', btnCodeText);
-      localStorage.setItem('btn_cat_text', btnCategoryText);
-      localStorage.setItem('btn_cart_text', btnCartText);
-      localStorage.setItem('btn_signup_text', btnSignUpText);
-      
-      // Save DB Config
-      localStorage.setItem('db_config', JSON.stringify(dbConfig));
-      
-      setIsSaving(false);
-      setSaveSuccess(true);
-      
-      setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
+    // Save DB config to local storage (Frontend only needs it for installation script generator)
+    localStorage.setItem('db_config', JSON.stringify(dbConfig));
+
+    try {
+        const payload = {
+            bot_token: botToken,
+            channel_id: channelId,
+            welcome_message: welcomeMessage,
+            btn_search_text: btnSearchText,
+            btn_code_text: btnCodeText,
+            btn_cat_text: btnCategoryText,
+            btn_cart_text: btnCartText,
+            btn_signup_text: btnSignUpText
+        };
+
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+            alert('خطا در ذخیره تنظیمات روی سرور');
+        }
+    } catch (e) {
+        alert('خطا در برقراری ارتباط با سرور');
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleTestConnection = async () => {
-      const now = new Date().toLocaleTimeString('fa-IR');
-      setLastCheckTime(now);
-
       if (!botToken.trim()) {
           setBotStatus('error');
           setStatusMessage("⚠️ خطا: فیلد توکن خالی است. لطفا توکن را وارد کنید.");
@@ -172,45 +140,29 @@ const BotDesigner: React.FC = () => {
               const data = await response.json();
               if (data.ok) {
                   setBotStatus('online');
-                  setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}\n🔗 شناسه عددی: ${data.result.id}\n\n⚠️ توجه: این تست نشان می‌دهد توکن صحیح است. برای پاسخ‌دهی ربات به کاربران، حتما باید سرور را از تب «راه‌اندازی» فعال کنید.`);
+                  setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}`);
               } else {
                   setBotStatus('error');
                   setStatusMessage('❌ خطا از سمت تلگرام: توکن ارسال شده نامعتبر است.');
               }
           } else {
-               if (response.status === 401 || response.status === 404) {
-                   setBotStatus('error');
-                   setStatusMessage(`❌ خطای احراز هویت (${response.status}):\nتوکن وارد شده اشتباه است. لطفا توکن را دقیقا از @BotFather کپی کنید.`);
-               } else {
-                   throw new Error(`HTTP Error: ${response.status}`);
-               }
+               setBotStatus('error');
+               setStatusMessage(`❌ خطا در ارتباط: ${response.status}`);
           }
       } catch (error) {
-          console.error("Connection Error:", error);
-          
-          const isValidFormat = /^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$/.test(botToken);
-          
-          if (isValidFormat) {
-              // It's likely a CORS error because browsers block requests to telegram API directly, 
-              // but the format looks correct so we assume it might work on server.
-              setBotStatus('online'); 
-              setStatusMessage('✅ ساختار توکن صحیح است.\n\n(مرورگر شما به دلایل امنیتی CORS اجازه اتصال مستقیم به api.telegram.org را نمی‌دهد، اما چون فرمت توکن صحیح است، روی سرور به درستی کار خواهد کرد.)');
-          } else {
-              setBotStatus('error');
-              setStatusMessage('❌ خطا در برقراری ارتباط:\n۱. اتصال اینترنت خود را بررسی کنید (فیلترشکن).\n۲. فرمت توکن را بررسی کنید. توکن باید شامل بخش عددی و بخش حروفی باشد.\n\nمثال صحیح:\n123456789:ABCdefGhIJKlmNoPQRstuVWxyZ');
-          }
+          setBotStatus('error');
+          setStatusMessage('❌ خطا در برقراری ارتباط. لطفا اینترنت سرور را بررسی کنید.');
       }
   };
 
   // Simulation State
   const [simStep, setSimStep] = useState<'start' | 'signup' | 'menu' | 'categories' | 'product' | 'search_prompt' | 'code_prompt'>('start');
-  const [isSimUserRegistered, setIsSimUserRegistered] = useState(false); // New state to track sim user registration
+  const [isSimUserRegistered, setIsSimUserRegistered] = useState(false); 
   const [chatHistory, setChatHistory] = useState<any[]>([
     { type: 'bot', text: 'برای شروع /start را بزنید.' }
   ]);
 
   const handleSimulateStart = () => {
-    // Reset simulation history slightly
     setChatHistory([{ type: 'user', text: '/start' }]);
 
     if (!isSimUserRegistered) {
@@ -286,200 +238,16 @@ const BotDesigner: React.FC = () => {
     }
   };
 
-  // Generate Node.js Code (ESM Version)
-  const generatedCode = `
-/**
- * --------------------------------------------------------
- * 🛠️ راهنمای نصب و اجرا (Installation Guide)
- * --------------------------------------------------------
- * 1. ابتدا Node.js را نصب کنید.
- * 2. دستور زیر را برای نصب وابستگی‌ها اجرا کنید:
- * 
- *    npm install node-telegram-bot-api mysql2 dotenv express
- * 
- * 3. سپس ربات را اجرا کنید:
- * 
- *    node bot.js
- * --------------------------------------------------------
- */
+  const toggleSimUser = () => {
+    setIsSimUserRegistered(!isSimUserRegistered);
+    setChatHistory([{ type: 'bot', text: 'وضعیت کاربر تغییر کرد. لطفا /start را بزنید.' }]);
+    setSimStep('start');
+  };
 
-import TelegramBot from 'node-telegram-bot-api';
-import mysql from 'mysql2/promise';
-
-// --- تنظیمات (Settings) ---
-const TOKEN = '${botToken || 'YOUR_BOT_TOKEN_HERE'}';
-const DB_CONFIG = {
-  host: '${dbConfig.host || 'localhost'}',
-  user: '${dbConfig.username || 'root'}',
-  password: '${dbConfig.password}',
-  database: '${dbConfig.database || 'shop_db'}'
-};
-
-// --- متن‌ها (Texts) ---
-const MESSAGES = {
-  welcome: \`${welcomeMessage}\`,
-  btnSearch: '${btnSearchText}',
-  btnCode: '${btnCodeText}',
-  btnCategory: '${btnCategoryText}',
-  btnCart: '${btnCartText}',
-  btnSignUp: '${btnSignUpText}',
-  askSignUp: 'برای استفاده از خدمات ربات، لطفا ابتدا شماره تماس خود را تایید کنید 👇'
-};
-
-// اتصال به دیتابیس (Database Connection)
-const createConnection = async () => {
-  try {
-    const connection = await mysql.createPool(DB_CONFIG);
-    console.log('✅ Connected to Database');
-    return connection;
-  } catch (err) {
-    console.warn('⚠️ Database connection failed. Running in mock mode.', err.message);
-    return null;
-  }
-};
-
-const pool = await createConnection();
-
-// راه‌اندازی ربات (Initialize Bot)
-const bot = new TelegramBot(TOKEN, { polling: true });
-
-console.log('🤖 ربات فروشگاهی روشن شد و در حال گوش دادن به پیام‌هاست...');
-
-// بررسی عضویت کاربر (Check User)
-async function isUserRegistered(chatId) {
-  if (!pool) return true; // Mock mode
-  try {
-    const [rows] = await pool.execute('SELECT * FROM users WHERE chat_id = ?', [chatId]);
-    return rows.length > 0;
-  } catch(e) { console.error(e); return true; }
-}
-
-// ذخیره کاربر (Register User)
-async function registerUser(chatId, name, phone) {
-  if (!pool) return;
-  try {
-    await pool.execute(
-      'INSERT INTO users (chat_id, name, phone_number) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone_number = ?', 
-      [chatId, name, phone, phone]
-    );
-    console.log(\`User registered: \${name} (\${phone})\`);
-  } catch(e) { console.error(e); }
-}
-
-// منوی اصلی (Main Menu Helper)
-const sendMainMenu = (chatId) => {
-  bot.sendMessage(chatId, MESSAGES.welcome, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: MESSAGES.btnSearch, callback_data: 'search' },
-          { text: MESSAGES.btnCode, callback_data: 'search_code' }
-        ],
-        [
-          { text: MESSAGES.btnCategory, callback_data: 'categories' },
-          { text: MESSAGES.btnCart, callback_data: 'cart' }
-        ]
-      ]
-    }
-  });
-};
-
-// پیام خوش‌آمدگویی (Start Command)
-bot.onText(/\\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  try {
-    const registered = await isUserRegistered(chatId);
-    
-    if (registered) {
-      sendMainMenu(chatId);
-    } else {
-      bot.sendMessage(chatId, MESSAGES.askSignUp, {
-        reply_markup: {
-          keyboard: [
-            [{ text: MESSAGES.btnSignUp, request_contact: true }]
-          ],
-          resize_keyboard: true,
-          one_time_keyboard: true
-        }
-      });
-    }
-  } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, 'خطایی رخ داده است.');
-  }
-});
-
-// دریافت شماره تماس (Contact Handler)
-bot.on('contact', async (msg) => {
-  const chatId = msg.chat.id;
-  const contact = msg.contact;
-
-  if (contact && contact.user_id === chatId) {
-    await registerUser(chatId, contact.first_name, contact.phone_number);
-    await bot.sendMessage(chatId, '✅ ثبت نام شما با موفقیت انجام شد!', {
-      reply_markup: { remove_keyboard: true }
-    });
-    sendMainMenu(chatId);
-  } else {
-    bot.sendMessage(chatId, 'لطفا از دکمه پایین برای ارسال شماره استفاده کنید.');
-  }
-});
-
-// مدیریت دکمه‌های شیشه‌ای (Inline Button Handler)
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-
-  const registered = await isUserRegistered(chatId);
-  if (!registered) {
-    bot.sendMessage(chatId, 'لطفا ابتدا /start را بزنید و شماره خود را تایید کنید.');
-    return;
-  }
-
-  if (data === 'categories') {
-    try {
-      if (pool) {
-         const [rows] = await pool.execute('SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ""');
-         if (rows.length > 0) {
-             const categoryButtons = rows.map(row => [{ text: row.category, callback_data: \`cat_\${row.category}\` }]);
-             bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:', {
-                 reply_markup: { inline_keyboard: categoryButtons }
-             });
-         } else {
-             bot.sendMessage(chatId, 'هنوز محصولی به فروشگاه اضافه نشده است.');
-         }
-      } else {
-         bot.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید (حالت تست).');
-      }
-    } catch(err) {
-        console.error(err);
-        bot.sendMessage(chatId, 'خطا در دریافت دسته‌بندی‌ها.');
-    }
-
-  } else if (data === 'search') {
-    bot.sendMessage(chatId, 'لطفا نام محصول را ارسال کنید:');
-  } else if (data === 'search_code') {
-    bot.sendMessage(chatId, 'لطفا کد محصول را ارسال کنید:');
-  } else if (data === 'cart') {
-    bot.sendMessage(chatId, 'سبد خرید شما در حال حاضر خالی است. لطفا محصولات را به سبد اضافه کنید.');
-  } else if (data.startsWith('cat_')) {
-      const selectedCategory = data.split('cat_')[1];
-      bot.sendMessage(chatId, \`شما دسته "\${selectedCategory}" را انتخاب کردید. (لیست محصولات اینجا نمایش داده می‌شود)\`);
-  }
-});
-
-bot.on('polling_error', (error) => {
-  console.log('Polling Error:', error.message); 
-});
-`.trim();
-
-  const installCmd = "npm install node-telegram-bot-api mysql2 dotenv express";
-  
   const installationScript = `#!/bin/bash
 
-# Installation Script for Bot Admin Pro & Telegram Bot Server
-# Run this script on your Ubuntu/Debian server
+# Installation Script for Bot Admin Pro
+# This script installs everything needed: Node.js, MySQL, and starts the Unified Server (Admin + Bot)
 
 echo "🚀 Starting Installation..."
 
@@ -491,8 +259,6 @@ sudo apt-get update && sudo apt-get upgrade -y
 echo "🟢 Installing Node.js..."
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 sudo apt-get install -y nodejs
-node -v
-npm -v
 
 # 3. Install MySQL Server
 echo "🐬 Installing MySQL Server..."
@@ -512,9 +278,12 @@ else
     MYSQL_AUTH_ARGS="-uroot -p$DB_PASS"
 fi
 
+# Try connection
 if sudo mysql -e "STATUS;" &>/dev/null; then
-    echo "✅ Connected via Socket Auth."
+    echo "✅ Connected via Socket Auth. Setting root password..."
     MYSQL_CMD="sudo mysql"
+    $MYSQL_CMD -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';"
+    $MYSQL_CMD -e "FLUSH PRIVILEGES;"
 elif sudo mysql $MYSQL_AUTH_ARGS -e "STATUS;" &>/dev/null; then
     echo "✅ Connected via Password Auth."
     MYSQL_CMD="sudo mysql $MYSQL_AUTH_ARGS"
@@ -525,60 +294,43 @@ else
 fi
 
 $MYSQL_CMD -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;"
-$MYSQL_CMD -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';"
-$MYSQL_CMD -e "FLUSH PRIVILEGES;"
+echo "✅ Database '$DB_NAME' ready."
 
-echo "✅ Database '$DB_NAME' configured successfully."
-
-# 5. Project Setup
+# 5. Project Setup & .env Generation
 echo "📂 Setting up Project..."
 npm install
+
+echo "🔑 Generating .env file..."
+cat > .env <<EOL
+PORT=3000
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=$DB_PASS
+DB_NAME=$DB_NAME
+BOT_TOKEN=${botToken}
+EOL
+
 echo "🔨 Building Frontend..."
 npm run build
 
-# 6. Bot Setup
-echo "🤖 Setting up Bot..."
+# 6. Install Dependencies
+echo "🤖 Installing Server Dependencies..."
 npm install node-telegram-bot-api mysql2 dotenv express
 
 # 7. Install PM2
 echo "🔄 Installing PM2..."
 sudo npm install -g pm2
 
-# 8. Start Processes
-echo "🚀 Starting Applications..."
+# 8. Start Unified Server
+echo "🚀 Starting Server..."
 pm2 delete all 2>/dev/null || true
-pm2 start server.js --name "admin-panel"
-if [ -f "bot.js" ]; then
-    pm2 start bot.js --name "telegram-bot"
-fi
+pm2 start server.js --name "bot-admin-pro"
 pm2 save
 pm2 startup | tail -n 1 | bash
 
-echo "✅ Installation & Deployment Complete!"
+echo "✅ Installation Complete! Your Admin Panel and Bot are running."
 `;
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(generatedCode);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const handleDownloadBot = () => {
-    const element = document.createElement("a");
-    const file = new Blob([generatedCode], {type: 'text/javascript'});
-    element.href = URL.createObjectURL(file);
-    element.download = "bot.js";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  const handleCopyInstall = () => {
-    navigator.clipboard.writeText(installCmd);
-    setCopiedInstall(true);
-    setTimeout(() => setCopiedInstall(false), 2000);
-  };
-  
   const handleCopyScript = () => {
     navigator.clipboard.writeText(installationScript);
     setCopiedScript(true);
@@ -593,12 +345,6 @@ echo "✅ Installation & Deployment Complete!"
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
-  };
-
-  const toggleSimUser = () => {
-    setIsSimUserRegistered(!isSimUserRegistered);
-    setChatHistory([{ type: 'bot', text: 'وضعیت کاربر تغییر کرد. لطفا /start را بزنید.' }]);
-    setSimStep('start');
   };
 
   const inputClassName = "w-full p-3 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all placeholder:text-gray-400";
@@ -682,14 +428,14 @@ echo "✅ Installation & Deployment Complete!"
               <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200 text-sm text-emerald-900 flex items-start gap-3 shadow-sm">
                 <CheckCircle className="shrink-0 mt-0.5 text-emerald-600" size={20} />
                 <div className="space-y-2">
-                  <p className="font-bold">اجرای همیشگی در پس‌زمینه (PM2)</p>
-                  <p className="leading-6">اسکریپت زیر به صورت خودکار سرور و ربات را نصب و اجرا می‌کند.</p>
+                  <p className="font-bold">سیستم یکپارچه (Unified Server)</p>
+                  <p className="leading-6">ربات تلگرام اکنون مستقیماً در سرور مدیریت اجرا می‌شود. نیازی به اجرای فایل جداگانه bot.js نیست.</p>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between items-end">
-                    <h3 className={labelClassName}>اسکریپت نصب کامل سرور (installation.sh)</h3>
+                    <h3 className={labelClassName}>اسکریپت نصب و راه‌اندازی (installation.sh)</h3>
                     <div className="flex gap-2">
                         <button onClick={handleDownloadScript} className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-md font-medium"><Download size={14} /> دانلود</button>
                         <button onClick={handleCopyScript} className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-md font-medium">{copiedScript ? <CheckCircle size={14} /> : <Copy size={14} />} کپی</button>
@@ -698,22 +444,6 @@ echo "✅ Installation & Deployment Complete!"
                 <div className="relative group">
                   <pre className="bg-slate-800 text-blue-300 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-600 shadow-inner h-64" dir="ltr">
                     <code>{installationScript}</code>
-                  </pre>
-                </div>
-              </div>
-
-              <div>
-                <h3 className={labelClassName}>کد اجرایی ربات (bot.js)</h3>
-                <div className="flex justify-between items-end mb-2">
-                  <p className="text-xs text-gray-500">این کد به صورت خودکار توسط اسکریپت بالا اجرا می‌شود.</p>
-                  <div className="flex gap-2">
-                    <button onClick={handleDownloadBot} className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-md font-medium"><Download size={14} /> دانلود</button>
-                    <button onClick={handleCopyCode} className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-md font-medium">{copiedCode ? <CheckCircle size={14} /> : <Copy size={14} />} کپی</button>
-                  </div>
-                </div>
-                <div className="relative group">
-                  <pre className="bg-slate-900 text-green-400 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-700 shadow-inner h-64" dir="ltr">
-                    <code>{generatedCode}</code>
                   </pre>
                 </div>
               </div>
@@ -806,12 +536,12 @@ echo "✅ Installation & Deployment Complete!"
             }`}
           >
             {isSaving ? <Loader2 size={20} className="animate-spin" /> : saveSuccess ? <CheckCircle size={20} /> : <Save size={20} />}
-            {isSaving ? 'در حال ذخیره...' : saveSuccess ? 'تغییرات ذخیره شد' : 'ذخیره تنظیمات'}
+            {isSaving ? 'در حال ذخیره...' : saveSuccess ? 'تنظیمات ذخیره و اعمال شد' : 'ذخیره و اعمال تنظیمات'}
           </button>
         </div>
       </div>
 
-      {/* Simulator (Simplified for brevity, but functional) */}
+      {/* Simulator */}
       <div className="w-full lg:w-[400px] shrink-0 flex flex-col items-center">
          <div className="flex gap-2 w-full mb-4">
              <div className="flex-1 text-sm font-bold text-slate-600 flex items-center justify-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">

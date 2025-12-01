@@ -131,13 +131,23 @@ const Products: React.FC = () => {
     }
   };
 
-  // Note: Categories are currently derived from products in the DB view, 
-  // but for UX we keep them in frontend state or use a separate table if needed.
-  // For now, we will just add to state so they appear in dropdowns.
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (newCategoryName && !categories.includes(newCategoryName)) {
-      setCategories([...categories, newCategoryName]);
-      setNewCategoryName('');
+      try {
+          const res = await fetch('/api/categories', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ name: newCategoryName })
+          });
+          if (res.ok) {
+              setCategories([...categories, newCategoryName]);
+              setNewCategoryName('');
+          } else {
+              alert('خطا در افزودن دسته');
+          }
+      } catch (e) {
+          alert('خطا در ارتباط با سرور');
+      }
     }
   };
 

@@ -18,7 +18,10 @@
     "@google/genai": "^1.30.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "mysql2": "^3.9.2",
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.65.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
