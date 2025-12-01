@@ -43,6 +43,7 @@ const initDb = async () => {
     await connection.query(`
       CREATE TABLE IF NOT EXISTS products (
         id VARCHAR(50) PRIMARY KEY,
+        code VARCHAR(50),
         name VARCHAR(255) NOT NULL,
         category VARCHAR(100),
         price DECIMAL(15,0),
@@ -52,6 +53,13 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Try to add 'code' column if it doesn't exist (Migration)
+    try {
+        await connection.query("ALTER TABLE products ADD COLUMN code VARCHAR(50)");
+    } catch (e) {
+        // Column likely exists
+    }
 
     // Categories Table
     await connection.query(`
@@ -213,7 +221,15 @@ async function startBot() {
             if (data === 'categories') {
                 const [cats] = await pool.query('SELECT name FROM categories ORDER BY name');
                 if (cats.length > 0) {
-                    const buttons = cats.map(c => [{ text: c.name, callback_data: `cat_${c.name}` }]);
+                    // Split categories into rows of 2
+                    const buttons = [];
+                    for(let i = 0; i < cats.length; i += 2) {
+                        const row = [{ text: cats[i].name, callback_data: `cat_${cats[i].name}` }];
+                        if (i + 1 < cats.length) {
+                            row.push({ text: cats[i+1].name, callback_data: `cat_${cats[i+1].name}` });
+                        }
+                        buttons.push(row);
+                    }
                     botInstance.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:', {
                         reply_markup: { inline_keyboard: buttons }
                     });
@@ -228,7 +244,35 @@ async function startBot() {
                 botInstance.sendMessage(chatId, 'لطفا کد محصول را وارد کنید:');
             } else if (data.startsWith('cat_')) {
                 const catName = data.split('cat_')[1];
-                botInstance.sendMessage(chatId, `محصولات دسته ${catName}: \n(لیست محصولات اینجا نمایش داده می‌شود)`);
+                
+                // Fetch products for this category
+                const [products] = await pool.query('SELECT * FROM products WHERE category = ? LIMIT 10', [catName]);
+                
+                if (products.length > 0) {
+                    for (const p of products) {
+                        const caption = `<b>${p.name}</b>\n\n🔖 کد محصول: ${p.code || '---'}\n💰 قیمت: ${Number(p.price).toLocaleString()} تومان\n📦 موجودی: ${p.stock > 0 ? p.stock : 'ناموجود'}\n\n📝 ${p.description || ''}`;
+                        
+                        const opts = { parse_mode: 'HTML' };
+                        
+                        if (p.image_url && p.image_url.startsWith('http')) {
+                            try {
+                                await botInstance.sendPhoto(chatId, p.image_url, { ...opts, caption: caption });
+                            } catch (e) {
+                                // Fallback if image fails
+                                await botInstance.sendMessage(chatId, caption, opts);
+                            }
+                        } else if (p.image_url && p.image_url.startsWith('data:image')) {
+                             // Sending base64 directly might be heavy, but usually works if converted to buffer. 
+                             // For simplicity in this demo, sending text if base64 to avoid lag, or implementing buffer conversion.
+                             // Here we just send text for base64 to be safe.
+                             await botInstance.sendMessage(chatId, caption, opts);
+                        } else {
+                            await botInstance.sendMessage(chatId, caption, opts);
+                        }
+                    }
+                } else {
+                    botInstance.sendMessage(chatId, `هیچ محصولی در دسته ${catName} یافت نشد.`);
+                }
             }
         });
 
@@ -324,6 +368,7 @@ app.get('/api/products', async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
     const products = rows.map(row => ({
       id: row.id,
+      code: row.code,
       name: row.name,
       category: row.category,
       price: Number(row.price),
@@ -339,10 +384,17 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { id, name, category, price, stock, description, imageUrl } = req.body;
+    const { id, code, name, category, price, stock, description, imageUrl } = req.body;
+    
+    // Check for duplicate Name or Code
+    const [existing] = await pool.query('SELECT id FROM products WHERE name = ? OR (code = ? AND code IS NOT NULL AND code != "")', [name, code]);
+    if (existing.length > 0) {
+        return res.status(409).json({ error: 'Duplicate product name or code' });
+    }
+
     await pool.query(
-      'INSERT INTO products (id, name, category, price, stock, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, name, category, price, stock, description, imageUrl]
+      'INSERT INTO products (id, code, name, category, price, stock, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, code, name, category, price, stock, description, imageUrl]
     );
     res.json({ success: true });
   } catch (error) {
@@ -352,10 +404,18 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { name, category, price, stock, description, imageUrl } = req.body;
+    const { name, code, category, price, stock, description, imageUrl } = req.body;
+    const currentId = req.params.id;
+
+    // Check for duplicate Name or Code (excluding current product)
+    const [existing] = await pool.query('SELECT id FROM products WHERE (name = ? OR (code = ? AND code IS NOT NULL AND code != "")) AND id != ?', [name, code, currentId]);
+    if (existing.length > 0) {
+        return res.status(409).json({ error: 'Duplicate product name or code' });
+    }
+
     await pool.query(
-      'UPDATE products SET name=?, category=?, price=?, stock=?, description=?, image_url=? WHERE id=?',
-      [name, category, price, stock, description, imageUrl, req.params.id]
+      'UPDATE products SET name=?, code=?, category=?, price=?, stock=?, description=?, image_url=? WHERE id=?',
+      [name, code, category, price, stock, description, imageUrl, currentId]
     );
     res.json({ success: true });
   } catch (error) {
@@ -388,6 +448,36 @@ app.post('/api/categories', async (req, res) => {
         const { name } = req.body;
         if (!name) return res.status(400).json({ error: 'Name is required' });
         await pool.query('INSERT IGNORE INTO categories (name) VALUES (?)', [name]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/categories/:oldName', async (req, res) => {
+    try {
+        const { name: newName } = req.body;
+        const { oldName } = req.params;
+        
+        // Update category table
+        await pool.query('UPDATE categories SET name = ? WHERE name = ?', [newName, oldName]);
+        
+        // Update associated products
+        await pool.query('UPDATE products SET category = ? WHERE category = ?', [newName, oldName]);
+        
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/categories/:name', async (req, res) => {
+    try {
+        const { name } = req.params;
+        await pool.query('DELETE FROM categories WHERE name = ?', [name]);
+        // Optional: Set product categories to null or 'Uncategorized'
+        await pool.query('UPDATE products SET category = NULL WHERE category = ?', [name]);
+        
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });

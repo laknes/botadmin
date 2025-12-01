@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud, Loader2, Save } from 'lucide-react';
 import { Product } from '../types';
 import { generateProductDescription } from '../services/geminiService';
 
@@ -13,10 +13,15 @@ const Products: React.FC = () => {
   const [loadingAI, setLoadingAI] = useState(false);
   const [channelId, setChannelId] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
+  
+  // Category Editing State
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
 
   // Form State
   const [currentProduct, setCurrentProduct] = useState<Partial<Product>>({
     name: '',
+    code: '',
     category: '',
     price: 0,
     stock: 0,
@@ -52,7 +57,7 @@ const Products: React.FC = () => {
     if (product) {
       setCurrentProduct(product);
     } else {
-      setCurrentProduct({ name: '', category: categories[0] || '', price: 0, stock: 0, description: '', imageUrl: '' });
+      setCurrentProduct({ name: '', code: '', category: categories[0] || '', price: 0, stock: 0, description: '', imageUrl: '' });
     }
     setIsModalOpen(true);
   };
@@ -86,9 +91,10 @@ const Products: React.FC = () => {
             imageUrl: currentProduct.imageUrl || 'https://picsum.photos/100/100'
         };
 
+        let res;
         if (currentProduct.id) {
             // Edit
-            await fetch(`/api/products/${currentProduct.id}`, {
+            res = await fetch(`/api/products/${currentProduct.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -96,16 +102,23 @@ const Products: React.FC = () => {
         } else {
             // Add
             payload.id = Date.now().toString(); // Simple ID generation
-            await fetch('/api/products', {
+            res = await fetch('/api/products', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
         }
-        await fetchData();
-        setIsModalOpen(false);
+
+        if (res.ok) {
+            await fetchData();
+            setIsModalOpen(false);
+        } else if (res.status === 409) {
+            alert('❌ خطا: نام محصول یا کد محصول تکراری است.');
+        } else {
+            alert('خطا در ذخیره محصول');
+        }
     } catch (err) {
-        alert('خطا در ذخیره محصول');
+        alert('خطا در ارتباط با سرور');
     }
   };
 
@@ -151,9 +164,36 @@ const Products: React.FC = () => {
     }
   };
 
+  const handleDeleteCategory = async (name: string) => {
+      if (confirm(`آیا از حذف دسته "${name}" مطمئن هستید؟ این کار ممکن است محصولات این دسته را بی دسته‌بندی کند.`)) {
+          await fetch(`/api/categories/${name}`, { method: 'DELETE' });
+          fetchData();
+      }
+  };
+
+  const startEditCategory = (name: string) => {
+      setEditingCategory(name);
+      setEditCategoryName(name);
+  };
+
+  const handleUpdateCategory = async () => {
+      if (editingCategory && editCategoryName && editCategoryName !== editingCategory) {
+          await fetch(`/api/categories/${editingCategory}`, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ name: editCategoryName })
+          });
+          fetchData();
+          setEditingCategory(null);
+      } else {
+          setEditingCategory(null);
+      }
+  };
+
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.category.toLowerCase().includes(searchTerm.toLowerCase())
+    p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.code && p.code.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
@@ -190,7 +230,7 @@ const Products: React.FC = () => {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input 
               type="text"
-              placeholder="جستجو در محصولات..."
+              placeholder="جستجو نام، کد یا دسته..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -208,6 +248,7 @@ const Products: React.FC = () => {
             <thead className="bg-gray-50 text-gray-600 font-medium text-sm">
               <tr>
                 <th className="px-6 py-4">تصویر</th>
+                <th className="px-6 py-4">کد</th>
                 <th className="px-6 py-4">نام محصول</th>
                 <th className="px-6 py-4">دسته‌بندی</th>
                 <th className="px-6 py-4">قیمت (تومان)</th>
@@ -221,6 +262,7 @@ const Products: React.FC = () => {
                   <td className="px-6 py-4">
                     <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-200 border border-gray-100" />
                   </td>
+                  <td className="px-6 py-4 font-mono text-gray-500 text-sm">{product.code || '---'}</td>
                   <td className="px-6 py-4 font-medium text-slate-800">{product.name}</td>
                   <td className="px-6 py-4 text-gray-500">
                     <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
@@ -293,8 +335,27 @@ const Products: React.FC = () => {
                </div>
                <div className="space-y-2 max-h-60 overflow-y-auto">
                  {categories.map(cat => (
-                   <div key={cat} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-100">
-                     <span className="text-sm text-gray-700">{cat}</span>
+                   <div key={cat} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-100 group">
+                     {editingCategory === cat ? (
+                         <div className="flex items-center gap-2 w-full">
+                             <input 
+                                type="text" 
+                                value={editCategoryName} 
+                                onChange={e => setEditCategoryName(e.target.value)}
+                                className="flex-1 border border-indigo-300 rounded px-2 py-1 text-sm outline-none"
+                             />
+                             <button onClick={handleUpdateCategory} className="text-green-600"><Save size={16} /></button>
+                             <button onClick={() => setEditingCategory(null)} className="text-red-500"><X size={16} /></button>
+                         </div>
+                     ) : (
+                         <>
+                            <span className="text-sm text-gray-700">{cat}</span>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => startEditCategory(cat)} className="text-blue-500 hover:bg-blue-50 p-1 rounded"><Edit2 size={14} /></button>
+                                <button onClick={() => handleDeleteCategory(cat)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14} /></button>
+                            </div>
+                         </>
+                     )}
                    </div>
                  ))}
                </div>
@@ -319,15 +380,30 @@ const Products: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">نام محصول</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">نام محصول <span className="text-red-500">*</span></label>
                   <input 
                     type="text" 
                     value={currentProduct.name} 
                     onChange={e => setCurrentProduct({...currentProduct, name: e.target.value})}
                     className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    placeholder="مثال: هدفون بی سیم"
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">کد محصول (یکتا) <span className="text-red-500">*</span></label>
+                  <input 
+                    type="text" 
+                    value={currentProduct.code || ''} 
+                    onChange={e => setCurrentProduct({...currentProduct, code: e.target.value})}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+                    placeholder="مثال: PROD-100"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div className="md:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">دسته‌بندی</label>
                   <select
                     value={currentProduct.category} 
@@ -340,9 +416,6 @@ const Products: React.FC = () => {
                     ))}
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">قیمت (تومان)</label>
                   <input 
