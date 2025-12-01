@@ -50,7 +50,7 @@ const BotDesigner: React.FC = () => {
     host: 'localhost',
     port: '3306',
     username: 'root',
-    password: '',
+    password: '', // Kept for UI state, but script will ask interactively
     database: 'telegram_shop_db'
   });
 
@@ -143,7 +143,7 @@ const BotDesigner: React.FC = () => {
               const data = await response.json();
               if (data.ok) {
                   setBotStatus('online');
-                  setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}`);
+                  setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}\n⏰ آخرین بررسی: ${new Date().toLocaleTimeString('fa-IR')}`);
                   showToast('اتصال به ربات با موفقیت برقرار شد', 'success');
               } else {
                   setBotStatus('error');
@@ -254,11 +254,43 @@ const BotDesigner: React.FC = () => {
   const installationScript = `#!/bin/bash
 
 # Installation Script for Bot Admin Pro
-# This script installs everything needed: Node.js, MySQL, and starts the Unified Server (Admin + Bot)
+# This script installs Node.js, MySQL, and configures the Unified Server.
 
 echo "🚀 Starting Installation..."
 
-# 1. Update System
+# --- Interactive Configuration ---
+echo ""
+echo "--------------------------------------------------------"
+echo "🔐 Please provide the following configuration details:"
+echo "--------------------------------------------------------"
+echo ""
+
+# Ask for MySQL Password
+while true; do
+    read -sp "🔑 Enter a secure password for MySQL 'root' user: " DB_PASS
+    echo ""
+    read -sp "🔑 Confirm MySQL password: " DB_PASS_CONFIRM
+    echo ""
+    [ "$DB_PASS" = "$DB_PASS_CONFIRM" ] && break
+    echo "❌ Passwords do not match. Please try again."
+done
+
+# Ask for Admin Panel Credentials
+echo ""
+echo "👤 Setup Admin Panel User:"
+read -p "   Username: " ADMIN_USER
+while true; do
+    read -sp "   Password: " ADMIN_PASS
+    echo ""
+    if [ -z "$ADMIN_PASS" ]; then
+        echo "❌ Password cannot be empty."
+    else
+        break
+    fi
+done
+
+echo ""
+echo "--------------------------------------------------------"
 echo "📦 Updating system packages..."
 sudo apt-get update && sudo apt-get upgrade -y
 
@@ -276,14 +308,7 @@ sudo systemctl enable mysql
 # 4. Configure Database
 echo "🗄️ Configuring Database..."
 
-DB_PASS="${dbConfig.password}"
 DB_NAME="${dbConfig.database}"
-
-if [ -z "$DB_PASS" ]; then
-    MYSQL_AUTH_ARGS="-uroot"
-else
-    MYSQL_AUTH_ARGS="-uroot -p$DB_PASS"
-fi
 
 # Try connection
 if sudo mysql -e "STATUS;" &>/dev/null; then
@@ -291,23 +316,25 @@ if sudo mysql -e "STATUS;" &>/dev/null; then
     MYSQL_CMD="sudo mysql"
     $MYSQL_CMD -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';"
     $MYSQL_CMD -e "FLUSH PRIVILEGES;"
-elif sudo mysql $MYSQL_AUTH_ARGS -e "STATUS;" &>/dev/null; then
-    echo "✅ Connected via Password Auth."
-    MYSQL_CMD="sudo mysql $MYSQL_AUTH_ARGS"
 else
-    echo "❌ ERROR: Could not connect to MySQL."
-    echo "   Please check your password configuration."
-    exit 1
+    # Assuming password might be set already or different auth
+    echo "⚠️  Could not connect via socket. Assuming password is already set or checking connectivity..."
 fi
 
-$MYSQL_CMD -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;"
-echo "✅ Database '$DB_NAME' ready."
+# Create Database using the password provided
+mysql -uroot -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;" 2>/dev/null
+
+if [ $? -eq 0 ]; then
+    echo "✅ Database '$DB_NAME' verified."
+else
+    echo "❌ Failed to create database. Please check your MySQL settings."
+fi
 
 # 5. Project Setup & .env Generation
 echo "📂 Setting up Project..."
 npm install
 
-echo "🔑 Generating .env file..."
+echo "🔑 Generating .env file with provided credentials..."
 cat > .env <<EOL
 PORT=3000
 DB_HOST=localhost
@@ -315,6 +342,9 @@ DB_USER=root
 DB_PASSWORD=$DB_PASS
 DB_NAME=$DB_NAME
 BOT_TOKEN=${botToken}
+# Initial Admin Credentials for Seeding
+ADMIN_INIT_USER=$ADMIN_USER
+ADMIN_INIT_PASS=$ADMIN_PASS
 EOL
 
 echo "🔨 Building Frontend..."
@@ -335,7 +365,10 @@ pm2 start server.js --name "bot-admin-pro"
 pm2 save
 pm2 startup | tail -n 1 | bash
 
-echo "✅ Installation Complete! Your Admin Panel and Bot are running."
+echo ""
+echo "✅ Installation Complete!"
+echo "👉 Admin Panel is running at: http://YOUR_SERVER_IP:3000"
+echo "👉 Login with User: $ADMIN_USER"
 `;
 
   const handleCopyScript = () => {
@@ -438,7 +471,7 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
                 <CheckCircle className="shrink-0 mt-0.5 text-emerald-600" size={20} />
                 <div className="space-y-2">
                   <p className="font-bold">سیستم یکپارچه (Unified Server)</p>
-                  <p className="leading-6">ربات تلگرام اکنون مستقیماً در سرور مدیریت اجرا می‌شود. نیازی به اجرای فایل جداگانه bot.js نیست.</p>
+                  <p className="leading-6">اسکریپت زیر به صورت تعاملی نام کاربری و رمز عبور ادمین و همچنین رمز دیتابیس را از شما دریافت کرده و سرور را راه‌اندازی می‌کند.</p>
                 </div>
               </div>
 
@@ -464,7 +497,7 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-sm text-blue-900 flex items-start gap-3 shadow-sm">
                 <Database className="shrink-0 mt-0.5 text-blue-600" size={20} />
                 <p className="font-medium leading-6">
-                  تنظیمات دیتابیس MySQL برای ذخیره محصولات و سفارشات.
+                  تنظیمات اتصال به دیتابیس MySQL. رمز عبور در هنگام اجرای اسکریپت نصب پرسیده خواهد شد.
                 </p>
               </div>
 
@@ -486,12 +519,8 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
 
               <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className={labelClassName}>نام کاربری</label>
+                  <label className={labelClassName}>نام کاربری (معمولا root)</label>
                   <input type="text" value={dbConfig.username} onChange={e => setDbConfig({...dbConfig, username: e.target.value})} className={inputClassName} dir="ltr" />
-                </div>
-                <div>
-                  <label className={labelClassName}>رمز عبور</label>
-                  <input type="password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} className={inputClassName} dir="ltr" />
                 </div>
               </div>
             </div>

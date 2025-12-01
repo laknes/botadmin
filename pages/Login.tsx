@@ -1,44 +1,43 @@
 import React, { useState } from 'react';
 import { Lock, User } from 'lucide-react';
+import { useFeedback } from '../components/Feedback';
 
 interface LoginProps {
   onLogin: (role: string) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const { setLoading } = useFeedback();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Check Local Storage first (Dynamic Users)
-    const storedUsers = localStorage.getItem('app_users');
-    let authenticated = false;
+    setError('');
+    setLoading(true);
 
-    if (storedUsers) {
-        try {
-            const users = JSON.parse(storedUsers);
-            const user = users.find((u: any) => u.username === username && u.password === password);
-            if (user) {
-                onLogin(user.role);
-                authenticated = true;
-            }
-        } catch (err) {
-            console.error("Error parsing users from local storage", err);
-        }
-    }
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
 
-    // Fallback for default admin if not authenticated via storage (or storage empty/corrupt)
-    if (!authenticated) {
-        if (username === 'admin' && password === 'admin') {
-             onLogin('admin');
-        } else if (username === 'editor' && password === 'editor') {
-             onLogin('editor');
+        const data = await response.json();
+
+        if (response.ok) {
+            // Save token/role to local storage for persistence on refresh
+            localStorage.setItem('user_role', data.user.role);
+            localStorage.setItem('auth_token', 'session_active');
+            onLogin(data.user.role);
         } else {
-             setError('نام کاربری یا رمز عبور اشتباه است.');
+            setError(data.error || 'خطا در ورود به سیستم');
         }
+    } catch (err) {
+        setError('خطا در برقراری ارتباط با سرور.');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -99,7 +98,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </form>
 
         <div className="mt-6 text-center text-xs text-gray-400">
-          <p>پیش‌فرض: admin / admin</p>
+          <p>از اطلاعاتی که هنگام نصب سرور وارد کردید استفاده کنید.</p>
         </div>
       </div>
     </div>

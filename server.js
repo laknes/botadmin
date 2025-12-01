@@ -39,7 +39,32 @@ const initDb = async () => {
   try {
     const connection = await pool.getConnection();
     
-    // Products Table
+    // 1. Panel Users Table (Admins)
+    await connection.query(`
+        CREATE TABLE IF NOT EXISTS panel_users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            name VARCHAR(100),
+            role VARCHAR(20) DEFAULT 'admin',
+            last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // Seed Initial Admin if provided in env (from installation script)
+    if (process.env.ADMIN_INIT_USER && process.env.ADMIN_INIT_PASS) {
+        // Simple check to see if table is empty or user doesn't exist
+        const [rows] = await connection.query('SELECT * FROM panel_users WHERE username = ?', [process.env.ADMIN_INIT_USER]);
+        if (rows.length === 0) {
+            console.log('👤 Seeding initial admin user from environment variables...');
+            await connection.query(
+                'INSERT INTO panel_users (username, password, name, role) VALUES (?, ?, ?, ?)', 
+                [process.env.ADMIN_INIT_USER, process.env.ADMIN_INIT_PASS, 'مدیر سیستم', 'admin']
+            );
+        }
+    }
+
+    // 2. Products Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS products (
         id VARCHAR(50) PRIMARY KEY,
@@ -54,14 +79,11 @@ const initDb = async () => {
       )
     `);
     
-    // Try to add 'code' column if it doesn't exist (Migration)
     try {
         await connection.query("ALTER TABLE products ADD COLUMN code VARCHAR(50)");
-    } catch (e) {
-        // Column likely exists
-    }
+    } catch (e) { }
 
-    // Categories Table
+    // 3. Categories Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -69,13 +91,12 @@ const initDb = async () => {
       )
     `);
 
-    // Seed default categories
     const [catCount] = await connection.query('SELECT COUNT(*) as count FROM categories');
     if (catCount[0].count === 0) {
         await connection.query('INSERT IGNORE INTO categories (name) VALUES ("الکترونیک"), ("لوازم جانبی"), ("پوشاک")');
     }
 
-    // Orders Table
+    // 4. Orders Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id VARCHAR(50) PRIMARY KEY,
@@ -87,7 +108,7 @@ const initDb = async () => {
       )
     `);
 
-    // Users Table (Bot Users)
+    // 5. Bot Users Table
     await connection.query(`
         CREATE TABLE IF NOT EXISTS users (
           chat_id BIGINT PRIMARY KEY,
@@ -102,7 +123,7 @@ const initDb = async () => {
         await connection.query("ALTER TABLE users ADD COLUMN username VARCHAR(255)");
     } catch (e) { }
 
-    // Settings Table (For Bot Configuration)
+    // 6. Settings Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS settings (
         setting_key VARCHAR(50) PRIMARY KEY,
@@ -113,7 +134,6 @@ const initDb = async () => {
     connection.release();
     console.log('✅ Database tables initialized.');
     
-    // Start the bot after DB is ready
     await startBot();
 
   } catch (err) {
@@ -129,28 +149,34 @@ async function getSetting(key) {
     try {
         const [rows] = await pool.query('SELECT setting_value FROM settings WHERE setting_key = ?', [key]);
         return rows.length > 0 ? rows[0].setting_value : null;
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
 async function setSetting(key, value) {
     await pool.query('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?', [key, value, value]);
 }
 
+// Convert Base64 Data URL to Buffer for Telegram
+function processImageForBot(imageUrl) {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('data:image')) {
+        // Extract base64 part
+        const matches = imageUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+            return Buffer.from(matches[2], 'base64');
+        }
+    }
+    return imageUrl; // Return as is if it's an http link
+}
+
 // --- BOT LOGIC ---
 
 async function startBot() {
-    // 1. Stop existing bot if running
     if (botInstance) {
-        console.log('🔄 Stopping existing bot instance...');
-        try {
-            await botInstance.stopPolling();
-        } catch (e) { console.error('Error stopping bot:', e); }
+        try { await botInstance.stopPolling(); } catch (e) {}
         botInstance = null;
     }
 
-    // 2. Fetch Token from DB (preferred) or Env
     let token = await getSetting('bot_token');
     if (!token) token = process.env.BOT_TOKEN;
 
@@ -159,7 +185,6 @@ async function startBot() {
         return;
     }
 
-    // 3. Fetch Configuration
     const welcomeMessage = (await getSetting('welcome_message')) || 'سلام! به فروشگاه ما خوش آمدید 🌹';
     const btnSearch = (await getSetting('btn_search_text')) || '🔍 جستجوی نام';
     const btnCode = (await getSetting('btn_code_text')) || '🔢 جستجوی کد';
@@ -172,26 +197,19 @@ async function startBot() {
     try {
         botInstance = new TelegramBot(token, { polling: true });
 
-        // Error Handling
         botInstance.on('polling_error', (error) => {
             console.log(`[Bot Error] ${error.code}: ${error.message}`);
         });
 
-        // /start Command
         botInstance.onText(/\/start/, async (msg) => {
             const chatId = msg.chat.id;
             const username = msg.chat.username ? `@${msg.chat.username}` : '';
             try {
-                // Check if user exists
                 const [users] = await pool.query('SELECT * FROM users WHERE chat_id = ?', [chatId]);
-                
                 if (users.length > 0) {
-                    // Update username if changed
                     await pool.query('UPDATE users SET username = ? WHERE chat_id = ?', [username, chatId]);
-                    // Show Main Menu
                     sendMainMenu(chatId, welcomeMessage, { btnSearch, btnCode, btnCategory, btnCart });
                 } else {
-                    // Request Contact
                     botInstance.sendMessage(chatId, 'برای استفاده از خدمات ربات، لطفا ابتدا شماره تماس خود را تایید کنید 👇', {
                         reply_markup: {
                             keyboard: [[{ text: btnSignUp, request_contact: true }]],
@@ -200,12 +218,9 @@ async function startBot() {
                         }
                     });
                 }
-            } catch (err) {
-                console.error(err);
-            }
+            } catch (err) { console.error(err); }
         });
 
-        // Contact Handler
         botInstance.on('contact', async (msg) => {
             const chatId = msg.chat.id;
             const contact = msg.contact;
@@ -223,7 +238,6 @@ async function startBot() {
             }
         });
 
-        // Callback Query Handler
         botInstance.on('callback_query', async (query) => {
             const chatId = query.message.chat.id;
             const data = query.data;
@@ -231,18 +245,13 @@ async function startBot() {
             if (data === 'categories') {
                 const [cats] = await pool.query('SELECT name FROM categories ORDER BY name');
                 if (cats.length > 0) {
-                    // Split categories into rows of 2
                     const buttons = [];
                     for(let i = 0; i < cats.length; i += 2) {
                         const row = [{ text: cats[i].name, callback_data: `cat_${cats[i].name}` }];
-                        if (i + 1 < cats.length) {
-                            row.push({ text: cats[i+1].name, callback_data: `cat_${cats[i+1].name}` });
-                        }
+                        if (i + 1 < cats.length) row.push({ text: cats[i+1].name, callback_data: `cat_${cats[i+1].name}` });
                         buttons.push(row);
                     }
-                    botInstance.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:', {
-                        reply_markup: { inline_keyboard: buttons }
-                    });
+                    botInstance.sendMessage(chatId, 'لطفا دسته مورد نظر را انتخاب کنید:', { reply_markup: { inline_keyboard: buttons } });
                 } else {
                     botInstance.sendMessage(chatId, 'هنوز دسته‌بندی وجود ندارد.');
                 }
@@ -253,51 +262,40 @@ async function startBot() {
             } else if (data === 'search_code') {
                 botInstance.sendMessage(chatId, 'لطفا کد محصول را وارد کنید:');
             } else if (data.startsWith('cat_')) {
-                // Show products as inline buttons
                 const catName = data.split('cat_')[1];
                 const [products] = await pool.query('SELECT id, name, price FROM products WHERE category = ? LIMIT 20', [catName]);
-                
                 if (products.length > 0) {
                     const buttons = products.map(p => ([{
                         text: `${p.name} - ${Number(p.price).toLocaleString()} تومان`,
                         callback_data: `prod_${p.id}`
                     }]));
-                    
-                    botInstance.sendMessage(chatId, `محصولات دسته ${catName}:`, {
-                        reply_markup: { inline_keyboard: buttons }
-                    });
+                    botInstance.sendMessage(chatId, `محصولات دسته ${catName}:`, { reply_markup: { inline_keyboard: buttons } });
                 } else {
                     botInstance.sendMessage(chatId, `هیچ محصولی در دسته ${catName} یافت نشد.`);
                 }
             } else if (data.startsWith('prod_')) {
-                // Show full product details
                 const prodId = data.split('prod_')[1];
                 const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [prodId]);
                 
                 if (rows.length > 0) {
                     const p = rows[0];
                     const caption = `<b>${p.name}</b>\n\n🔖 کد محصول: ${p.code || '---'}\n💰 قیمت: ${Number(p.price).toLocaleString()} تومان\n📦 موجودی: ${p.stock > 0 ? p.stock : 'ناموجود'}\n\n📝 ${p.description || ''}`;
-                    
                     const opts = { 
                         parse_mode: 'HTML',
-                        reply_markup: {
-                            inline_keyboard: [[{ text: '🛒 افزودن به سبد خرید', callback_data: `add_${p.id}` }]]
-                        }
+                        reply_markup: { inline_keyboard: [[{ text: '🛒 افزودن به سبد خرید', callback_data: `add_${p.id}` }]] }
                     };
                     
-                    if (p.image_url && p.image_url.startsWith('http')) {
+                    const img = processImageForBot(p.image_url);
+                    if (img) {
                         try {
-                            await botInstance.sendPhoto(chatId, p.image_url, { ...opts, caption: caption });
+                            await botInstance.sendPhoto(chatId, img, { ...opts, caption: caption });
                         } catch (e) {
+                             console.error("Failed to send photo:", e.message);
                              await botInstance.sendMessage(chatId, caption, opts);
                         }
-                    } else if (p.image_url && p.image_url.startsWith('data:image')) {
-                        await botInstance.sendMessage(chatId, caption, opts);
                     } else {
                         await botInstance.sendMessage(chatId, caption, opts);
                     }
-                } else {
-                    botInstance.sendMessage(chatId, 'محصول یافت نشد.');
                 }
             }
         });
@@ -322,25 +320,38 @@ function sendMainMenu(chatId, message, btns) {
 
 // --- API ENDPOINTS ---
 
-// 0. Settings API
+// Auth API
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const [rows] = await pool.query('SELECT * FROM panel_users WHERE username = ? AND password = ?', [username, password]);
+        
+        if (rows.length > 0) {
+            const user = rows[0];
+            // Update last active
+            await pool.query('UPDATE panel_users SET last_active = NOW() WHERE id = ?', [user.id]);
+            res.json({ success: true, user: { id: user.id, name: user.name, username: user.username, role: user.role } });
+        } else {
+            res.status(401).json({ error: 'نام کاربری یا رمز عبور اشتباه است.' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Settings API
 app.get('/api/settings', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM settings');
         const settings = {};
         rows.forEach(row => { settings[row.setting_key] = row.setting_value });
         res.json(settings);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/settings', async (req, res) => {
     try {
-        const { 
-            bot_token, channel_id, welcome_message, 
-            btn_search_text, btn_code_text, btn_cat_text, btn_cart_text, btn_signup_text 
-        } = req.body;
-
+        const { bot_token, channel_id, welcome_message, btn_search_text, btn_code_text, btn_cat_text, btn_cart_text, btn_signup_text } = req.body;
         await setSetting('bot_token', bot_token);
         await setSetting('channel_id', channel_id);
         await setSetting('welcome_message', welcome_message);
@@ -349,196 +360,147 @@ app.post('/api/settings', async (req, res) => {
         await setSetting('btn_cat_text', btn_cat_text);
         await setSetting('btn_cart_text', btn_cart_text);
         await setSetting('btn_signup_text', btn_signup_text);
-
-        // Restart bot with new settings
+        
         await startBot();
-
         res.json({ success: true });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Bot Action: Send Product to Channel
+app.post('/api/bot/send-product', async (req, res) => {
+    try {
+        const { productId } = req.body;
+        if (!botInstance) return res.status(503).json({ error: 'ربات فعال نیست.' });
+
+        const channelId = await getSetting('channel_id');
+        if (!channelId) return res.status(400).json({ error: 'آیدی کانال تنظیم نشده است.' });
+
+        const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [productId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'محصول یافت نشد.' });
+
+        const p = rows[0];
+        const caption = `<b>${p.name}</b>\n\n🔖 کد محصول: ${p.code || '---'}\n💰 قیمت: ${Number(p.price).toLocaleString()} تومان\n📦 موجودی: ${p.stock > 0 ? p.stock : 'ناموجود'}\n\n📝 ${p.description || ''}\n\n👇 جهت خرید کلیک کنید:`;
+        
+        const opts = {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '🛍 خرید این محصول', url: `https://t.me/${(await botInstance.getMe()).username}?start=prod_${p.id}` }]] }
+        };
+
+        const img = processImageForBot(p.image_url);
+        
+        try {
+            if (img) {
+                await botInstance.sendPhoto(channelId, img, opts);
+            } else {
+                await botInstance.sendMessage(channelId, caption, opts);
+            }
+            res.json({ success: true });
+        } catch (botErr) {
+            console.error("Telegram API Error:", botErr.message);
+            res.status(500).json({ error: `خطا در ارسال به تلگرام: ${botErr.message}` });
+        }
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 1. Dashboard Stats
+// Standard CRUD endpoints (Products, Categories, Orders...)
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    const [products] = await pool.query('SELECT COUNT(*) as count FROM products');
     const [orders] = await pool.query('SELECT COUNT(*) as count FROM orders');
     const [users] = await pool.query('SELECT COUNT(*) as count FROM users');
     const [sales] = await pool.query('SELECT SUM(total) as total FROM orders WHERE status = "completed"');
-
-    const chartData = [
-      { name: 'شنبه', sales: 0, orders: 0 },
-      { name: 'یکشنبه', sales: 0, orders: 0 },
-      { name: 'دوشنبه', sales: 0, orders: 0 },
-      { name: 'سه‌شنبه', sales: 0, orders: 0 },
-      { name: 'چهارشنبه', sales: 0, orders: 0 },
-      { name: 'پنجشنبه', sales: 0, orders: 0 },
-      { name: 'جمعه', sales: 0, orders: 0 },
-    ];
-
     res.json({
       totalSales: sales[0].total || 0,
       totalOrders: orders[0].count || 0,
       totalUsers: users[0].count || 0,
-      chartData
+      chartData: []
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 2. Products
 app.get('/api/products', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
-    const products = rows.map(row => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      category: row.category,
-      price: Number(row.price),
-      stock: row.stock,
-      description: row.description,
-      imageUrl: row.image_url
-    }));
-    res.json(products);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(rows.map(row => ({ ...row, price: Number(row.price), imageUrl: row.image_url })));
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
     const { id, code, name, category, price, stock, description, imageUrl } = req.body;
-    
-    // Check for duplicate Name or Code
     const [existing] = await pool.query('SELECT id FROM products WHERE name = ? OR (code = ? AND code IS NOT NULL AND code != "")', [name, code]);
-    if (existing.length > 0) {
-        return res.status(409).json({ error: 'Duplicate product name or code' });
-    }
-
-    await pool.query(
-      'INSERT INTO products (id, code, name, category, price, stock, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, code, name, category, price, stock, description, imageUrl]
-    );
+    if (existing.length > 0) return res.status(409).json({ error: 'Duplicate' });
+    
+    await pool.query('INSERT INTO products (id, code, name, category, price, stock, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, code, name, category, price, stock, description, imageUrl]);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/products/:id', async (req, res) => {
   try {
     const { name, code, category, price, stock, description, imageUrl } = req.body;
-    const currentId = req.params.id;
+    const [existing] = await pool.query('SELECT id FROM products WHERE (name = ? OR (code = ? AND code IS NOT NULL AND code != "")) AND id != ?', [name, code, req.params.id]);
+    if (existing.length > 0) return res.status(409).json({ error: 'Duplicate' });
 
-    // Check for duplicate Name or Code (excluding current product)
-    const [existing] = await pool.query('SELECT id FROM products WHERE (name = ? OR (code = ? AND code IS NOT NULL AND code != "")) AND id != ?', [name, code, currentId]);
-    if (existing.length > 0) {
-        return res.status(409).json({ error: 'Duplicate product name or code' });
-    }
-
-    await pool.query(
-      'UPDATE products SET name=?, code=?, category=?, price=?, stock=?, description=?, image_url=? WHERE id=?',
-      [name, code, category, price, stock, description, imageUrl, currentId]
-    );
+    await pool.query('UPDATE products SET name=?, code=?, category=?, price=?, stock=?, description=?, image_url=? WHERE id=?', [name, code, category, price, stock, description, imageUrl, req.params.id]);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.delete('/api/products/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM products WHERE id=?', [req.params.id]);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 3. Categories
 app.get('/api/categories', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT name FROM categories ORDER BY name');
-    const categories = rows.map(r => r.name);
-    res.json(categories);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(rows.map(r => r.name));
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/categories', async (req, res) => {
     try {
-        const { name } = req.body;
-        if (!name) return res.status(400).json({ error: 'Name is required' });
-        await pool.query('INSERT IGNORE INTO categories (name) VALUES (?)', [name]);
+        await pool.query('INSERT IGNORE INTO categories (name) VALUES (?)', [req.body.name]);
         res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/categories/:oldName', async (req, res) => {
     try {
-        const { name: newName } = req.body;
-        const { oldName } = req.params;
-        
-        // Update category table
-        await pool.query('UPDATE categories SET name = ? WHERE name = ?', [newName, oldName]);
-        
-        // Update associated products
-        await pool.query('UPDATE products SET category = ? WHERE category = ?', [newName, oldName]);
-        
+        await pool.query('UPDATE categories SET name = ? WHERE name = ?', [req.body.name, req.params.oldName]);
+        await pool.query('UPDATE products SET category = ? WHERE category = ?', [req.body.name, req.params.oldName]);
         res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.delete('/api/categories/:name', async (req, res) => {
     try {
-        const { name } = req.params;
-        await pool.query('DELETE FROM categories WHERE name = ?', [name]);
-        // Optional: Set product categories to null or 'Uncategorized'
-        await pool.query('UPDATE products SET category = NULL WHERE category = ?', [name]);
-        
+        await pool.query('DELETE FROM categories WHERE name = ?', [req.params.name]);
+        await pool.query('UPDATE products SET category = NULL WHERE category = ?', [req.params.name]);
         res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 4. Orders
 app.get('/api/orders', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    const orders = rows.map(row => ({
-        id: row.id,
-        customerName: row.customer_name,
-        total: Number(row.total),
-        status: row.status,
-        date: new Date(row.created_at).toLocaleDateString('fa-IR'),
-        items: row.items_count
-    }));
-    res.json(orders);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(rows.map(row => ({
+        id: row.id, customerName: row.customer_name, total: Number(row.total), status: row.status, date: new Date(row.created_at).toLocaleDateString('fa-IR'), items: row.items_count
+    })));
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 5. Bot Users
 app.get('/api/bot-users', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM users ORDER BY registered_at DESC');
         res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Catch-all
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });

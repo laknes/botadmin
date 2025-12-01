@@ -100,7 +100,7 @@ const Products: React.FC = () => {
     try {
         const payload = { 
             ...currentProduct, 
-            imageUrl: currentProduct.imageUrl || 'https://picsum.photos/100/100'
+            imageUrl: currentProduct.imageUrl || ''
         };
 
         let res;
@@ -167,8 +167,26 @@ const Products: React.FC = () => {
         title: 'ارسال به کانال',
         message: `آیا مطمئن هستید که می‌خواهید محصول "${product.name}" را به کانال ${channelId} ارسال کنید؟`,
         confirmText: 'ارسال',
-        onConfirm: () => {
-             showToast(`محصول در صف ارسال به ${channelId} قرار گرفت.`, 'success');
+        onConfirm: async () => {
+             setGlobalLoading(true);
+             try {
+                const res = await fetch('/api/bot/send-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productId: product.id })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(`محصول با موفقیت به کانال ارسال شد.`, 'success');
+                } else {
+                    showToast(data.error || 'خطا در ارسال به کانال', 'error');
+                }
+             } catch (err) {
+                 showToast('خطا در ارتباط با سرور', 'error');
+             } finally {
+                 setGlobalLoading(false);
+             }
         }
     });
   };
@@ -314,7 +332,11 @@ const Products: React.FC = () => {
               {filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
-                    <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-200 border border-gray-100" />
+                    {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-200 border border-gray-100" />
+                    ) : (
+                        <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center text-gray-400"><ImageIcon size={20} /></div>
+                    )}
                   </td>
                   <td className="px-6 py-4 font-mono text-gray-500 text-sm">{product.code || '---'}</td>
                   <td className="px-6 py-4 font-medium text-slate-800">{product.name}</td>
