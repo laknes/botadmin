@@ -300,14 +300,17 @@ DB_USER=\${INPUT_DB_USER:-root}
 # Database Password
 while true; do
     echo ""
-    echo -n "🔑 Set/Enter MySQL '\$DB_USER' Password: "
-    read -s DB_PASS
+    # Using read -s -p for better compatibility and tr -d to strip carriage returns
+    read -s -p "🔑 Set/Enter MySQL '\$DB_USER' Password: " RAW_DB_PASS
     echo ""
-    echo -n "🔑 Confirm Password: "
-    read -s DB_PASS_CONFIRM
+    read -s -p "🔑 Confirm Password: " RAW_DB_PASS_CONFIRM
     echo ""
     
-    if [ "\$DB_PASS" == "\$DB_PASS_CONFIRM" ]; then
+    # Strip potential carriage returns (CR) from input if pasted from Windows
+    DB_PASS=$(echo -n "\$RAW_DB_PASS" | tr -d '\r')
+    DB_PASS_CONFIRM=$(echo -n "\$RAW_DB_PASS_CONFIRM" | tr -d '\r')
+    
+    if [ "\$DB_PASS" = "\$DB_PASS_CONFIRM" ]; then
         break
     else
         echo "❌ Passwords do not match. Try again."
@@ -318,10 +321,12 @@ done
 echo ""
 echo "🛡️  Create Admin Panel User"
 read -p "   Username: " ADMIN_USER
+
 while true; do
-    echo -n "   Password: "
-    read -s ADMIN_PASS
+    read -s -p "   Password: " RAW_ADMIN_PASS
     echo ""
+    ADMIN_PASS=$(echo -n "\$RAW_ADMIN_PASS" | tr -d '\r')
+    
     if [ -z "\$ADMIN_PASS" ]; then
         echo "❌ Password cannot be empty."
     else
