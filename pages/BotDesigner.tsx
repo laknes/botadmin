@@ -300,21 +300,21 @@ DB_USER=\${INPUT_DB_USER:-root}
 # Database Password
 while true; do
     echo ""
-    printf "🔑 Set/Enter MySQL '\$DB_USER' Password: "
+    echo -n "🔑 Set/Enter MySQL '\$DB_USER' Password: "
     stty -echo
     read RAW_DB_PASS
     stty echo
     echo ""
     
-    printf "🔑 Confirm Password: "
+    echo -n "🔑 Confirm Password: "
     stty -echo
     read RAW_DB_PASS_CONFIRM
     stty echo
     echo ""
     
-    # Use printf to avoid adding newlines, tr to remove returns
-    DB_PASS=\$(printf "%s" "\$RAW_DB_PASS" | tr -d '\\r')
-    DB_PASS_CONFIRM=\$(printf "%s" "\$RAW_DB_PASS_CONFIRM" | tr -d '\\r')
+    # Clean inputs (strip carriage returns)
+    DB_PASS=\$(echo "\$RAW_DB_PASS" | tr -d '\\r')
+    DB_PASS_CONFIRM=\$(echo "\$RAW_DB_PASS_CONFIRM" | tr -d '\\r')
     
     if [ "\$DB_PASS" = "\$DB_PASS_CONFIRM" ]; then
         break
@@ -329,13 +329,13 @@ echo "🛡️  Create Admin Panel User"
 read -p "   Username: " ADMIN_USER
 
 while true; do
-    printf "   Password: "
+    echo -n "   Password: "
     stty -echo
     read RAW_ADMIN_PASS
     stty echo
     echo ""
     
-    ADMIN_PASS=\$(printf "%s" "\$RAW_ADMIN_PASS" | tr -d '\\r')
+    ADMIN_PASS=\$(echo "\$RAW_ADMIN_PASS" | tr -d '\\r')
     
     if [ -z "\$ADMIN_PASS" ]; then
         echo "❌ Password cannot be empty."
