@@ -214,7 +214,11 @@ async function startBot() {
         // Set Bot Description (Before Start)
         if (botDescription) {
             try {
-                await botInstance.setMyDescription({ description: botDescription });
+                // This method sets the description shown in the chat with the bot before starting
+                // Note: setMyDescription might not be available in older library versions, wrap in try/catch
+                if (botInstance.setMyDescription) {
+                    await botInstance.setMyDescription({ description: botDescription });
+                }
             } catch (descErr) {
                 console.warn("Failed to set bot description:", descErr.message);
             }
@@ -236,10 +240,6 @@ async function startBot() {
             // If user is just starting or using deep link
             try {
                 const [users] = await pool.query('SELECT * FROM users WHERE chat_id = ?', [chatId]);
-                
-                // If deep linking to a product (args[1]), show product immediately if registered
-                // OR show product preview but require registration for purchasing? 
-                // For simplicity: Check registration first.
                 
                 if (users.length > 0) {
                     await pool.query('UPDATE users SET username = ? WHERE chat_id = ?', [username, chatId]);
@@ -354,7 +354,11 @@ async function sendProductDetails(chatId, prodId) {
         const navRow = [];
         if (p.category) {
             navRow.push({ text: '🔙 بازگشت به لیست', callback_data: `cat_${p.category}` });
+        } else {
+            navRow.push({ text: '🔙 بازگشت', callback_data: 'categories' });
         }
+        
+        // Add Home Button to the same row or a new row
         navRow.push({ text: '🏠 منوی اصلی', callback_data: 'back_home' });
         inlineKeyboard.push(navRow);
 

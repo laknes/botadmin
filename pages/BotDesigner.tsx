@@ -240,6 +240,12 @@ const BotDesigner: React.FC = () => {
 # 🚀 Bot Admin Pro - Auto Installation Script
 # ==========================================
 
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    echo "⚠️  Please run this script with bash: bash installation.sh"
+    exit 1
+fi
+
 echo ""
 echo "  ____        _       _       _           _       "
 echo " |  _ \\      | |     | |     | |         (_)      "
@@ -257,7 +263,7 @@ echo ""
 # --- 1. System Updates ---
 echo "📦 Updating system packages..."
 sudo apt-get update
-# sudo apt-get upgrade -y # Optional: can take a long time
+# sudo apt-get upgrade -y # Optional
 
 # --- 2. Install Node.js ---
 echo "🟢 Installing Node.js (LTS)..."
@@ -294,12 +300,18 @@ DB_USER=\${INPUT_DB_USER:-root}
 # Database Password
 while true; do
     echo ""
-    read -sp "🔑 Set/Enter MySQL '\$DB_USER' Password: " DB_PASS
+    echo -n "🔑 Set/Enter MySQL '\$DB_USER' Password: "
+    read -s DB_PASS
     echo ""
-    read -sp "🔑 Confirm Password: " DB_PASS_CONFIRM
+    echo -n "🔑 Confirm Password: "
+    read -s DB_PASS_CONFIRM
     echo ""
-    [ "\$DB_PASS" = "\$DB_PASS_CONFIRM" ] && break
-    echo "❌ Passwords do not match. Try again."
+    
+    if [ "\$DB_PASS" == "\$DB_PASS_CONFIRM" ]; then
+        break
+    else
+        echo "❌ Passwords do not match. Try again."
+    fi
 done
 
 # Admin Panel Credentials
@@ -307,7 +319,8 @@ echo ""
 echo "🛡️  Create Admin Panel User"
 read -p "   Username: " ADMIN_USER
 while true; do
-    read -sp "   Password: " ADMIN_PASS
+    echo -n "   Password: "
+    read -s ADMIN_PASS
     echo ""
     if [ -z "\$ADMIN_PASS" ]; then
         echo "❌ Password cannot be empty."
