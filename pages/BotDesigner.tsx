@@ -24,10 +24,11 @@ const MOCK_PRODUCT = {
 
 const BotDesigner: React.FC = () => {
   const { showToast, setLoading: setGlobalLoading } = useFeedback();
-  const [activeTab, setActiveTab] = useState<'design' | 'settings' | 'database' | 'deploy'>('design');
+  const [activeTab, setActiveTab] = useState<'design' | 'settings' | 'deploy'>('design');
   
   // Bot Config State
   const [welcomeMessage, setWelcomeMessage] = useState('سلام! به فروشگاه ما خوش آمدید 🌹\nلطفا یکی از گزینه‌های زیر را انتخاب کنید:');
+  const [botDescription, setBotDescription] = useState('این ربات جهت خرید آنلاین محصولات فروشگاه ما طراحی شده است.');
   
   // Custom Button Texts
   const [btnSearchText, setBtnSearchText] = useState('🔍 جستجوی نام');
@@ -45,15 +46,6 @@ const BotDesigner: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
 
-  // Database Config State
-  const [dbConfig, setDbConfig] = useState({
-    host: 'localhost',
-    port: '3306',
-    username: 'root',
-    password: '', // Kept for UI state, but script will ask interactively
-    database: 'telegram_shop_db'
-  });
-
   // Load settings from Server API
   useEffect(() => {
     const fetchSettings = async () => {
@@ -64,6 +56,7 @@ const BotDesigner: React.FC = () => {
                 if (data.bot_token) setBotToken(data.bot_token);
                 if (data.channel_id) setChannelId(data.channel_id);
                 if (data.welcome_message) setWelcomeMessage(data.welcome_message);
+                if (data.bot_description) setBotDescription(data.bot_description);
                 if (data.btn_search_text) setBtnSearchText(data.btn_search_text);
                 if (data.btn_code_text) setBtnCodeText(data.btn_code_text);
                 if (data.btn_cat_text) setBtnCategoryText(data.btn_cat_text);
@@ -75,14 +68,6 @@ const BotDesigner: React.FC = () => {
         }
     };
     
-    // Load Local Settings (DB Config)
-    const savedDbConfig = localStorage.getItem('db_config');
-    if (savedDbConfig) {
-        try {
-            setDbConfig(JSON.parse(savedDbConfig));
-        } catch (e) {}
-    }
-
     fetchSettings();
   }, []);
 
@@ -90,14 +75,12 @@ const BotDesigner: React.FC = () => {
     setGlobalLoading(true);
     setSaveSuccess(false);
 
-    // Save DB config to local storage (Frontend only needs it for installation script generator)
-    localStorage.setItem('db_config', JSON.stringify(dbConfig));
-
     try {
         const payload = {
             bot_token: botToken,
             channel_id: channelId,
             welcome_message: welcomeMessage,
+            bot_description: botDescription,
             btn_search_text: btnSearchText,
             btn_code_text: btnCodeText,
             btn_cat_text: btnCategoryText,
@@ -253,122 +236,158 @@ const BotDesigner: React.FC = () => {
 
   const installationScript = `#!/bin/bash
 
-# Installation Script for Bot Admin Pro
-# This script installs Node.js, MySQL, and configures the Unified Server.
+# ==========================================
+# 🚀 Bot Admin Pro - Auto Installation Script
+# ==========================================
 
-echo "🚀 Starting Installation..."
-
-# --- Interactive Configuration ---
 echo ""
-echo "--------------------------------------------------------"
-echo "🔐 Please provide the following configuration details:"
-echo "--------------------------------------------------------"
+echo "  ____        _       _       _           _       "
+echo " |  _ \\      | |     | |     | |         (_)      "
+echo " | |_) | ___ | |_    | | __ _| |__   __ _ _ _ __  "
+echo " |  _ < / _ \\| __|   | |/ _\` | '_ \\ / _\` | | '_ \\ "
+echo " | |_) | (_) | |_    | | (_| | |_) | (_| | | | | |"
+echo " |____/ \\___/ \\__|   |_|\\__,_|_.__/ \\__,_|_|_| |_|"
+echo ""
+echo "--------------------------------------------------"
+echo " This script will install Node.js, MySQL, and"
+echo " configure your Telegram Shop Admin Panel."
+echo "--------------------------------------------------"
 echo ""
 
-# Ask for MySQL Password
+# --- 1. System Updates ---
+echo "📦 Updating system packages..."
+sudo apt-get update
+# sudo apt-get upgrade -y # Optional: can take a long time
+
+# --- 2. Install Node.js ---
+echo "🟢 Installing Node.js (LTS)..."
+if ! command -v node &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+else
+    echo "   Node.js is already installed."
+fi
+
+# --- 3. Install MySQL ---
+echo "🐬 Installing MySQL Server..."
+if ! command -v mysql &> /dev/null; then
+    sudo apt-get install -y mysql-server
+    sudo systemctl start mysql
+    sudo systemctl enable mysql
+else
+    echo "   MySQL is already installed."
+fi
+
+# --- 4. Interactive Configuration ---
+echo ""
+echo "🔐 CONFIGURATION SETUP"
+echo "----------------------"
+
+# Database Name
+read -p "📝 Enter Database Name (default: telegram_shop_db): " INPUT_DB_NAME
+DB_NAME=\${INPUT_DB_NAME:-telegram_shop_db}
+
+# Database User
+read -p "👤 Enter Database User (default: root): " INPUT_DB_USER
+DB_USER=\${INPUT_DB_USER:-root}
+
+# Database Password
 while true; do
-    read -sp "🔑 Enter a secure password for MySQL 'root' user: " DB_PASS
     echo ""
-    read -sp "🔑 Confirm MySQL password: " DB_PASS_CONFIRM
+    read -sp "🔑 Set/Enter MySQL '\$DB_USER' Password: " DB_PASS
     echo ""
-    [ "$DB_PASS" = "$DB_PASS_CONFIRM" ] && break
-    echo "❌ Passwords do not match. Please try again."
+    read -sp "🔑 Confirm Password: " DB_PASS_CONFIRM
+    echo ""
+    [ "\$DB_PASS" = "\$DB_PASS_CONFIRM" ] && break
+    echo "❌ Passwords do not match. Try again."
 done
 
-# Ask for Admin Panel Credentials
+# Admin Panel Credentials
 echo ""
-echo "👤 Setup Admin Panel User:"
+echo "🛡️  Create Admin Panel User"
 read -p "   Username: " ADMIN_USER
 while true; do
     read -sp "   Password: " ADMIN_PASS
     echo ""
-    if [ -z "$ADMIN_PASS" ]; then
+    if [ -z "\$ADMIN_PASS" ]; then
         echo "❌ Password cannot be empty."
     else
         break
     fi
 done
 
+# --- 5. Configure Database ---
 echo ""
-echo "--------------------------------------------------------"
-echo "📦 Updating system packages..."
-sudo apt-get update && sudo apt-get upgrade -y
+echo "🗄️  Configuring MySQL..."
 
-# 2. Install Node.js (Latest LTS)
-echo "🟢 Installing Node.js..."
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# 3. Install MySQL Server
-echo "🐬 Installing MySQL Server..."
-sudo apt-get install -y mysql-server
-sudo systemctl start mysql
-sudo systemctl enable mysql
-
-# 4. Configure Database
-echo "🗄️ Configuring Database..."
-
-DB_NAME="${dbConfig.database}"
-
-# Try connection
+# Try to connect and set password if using socket auth (fresh install)
 if sudo mysql -e "STATUS;" &>/dev/null; then
-    echo "✅ Connected via Socket Auth. Setting root password..."
-    MYSQL_CMD="sudo mysql"
-    $MYSQL_CMD -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$DB_PASS';"
-    $MYSQL_CMD -e "FLUSH PRIVILEGES;"
-else
-    # Assuming password might be set already or different auth
-    echo "⚠️  Could not connect via socket. Assuming password is already set or checking connectivity..."
+    echo "   Configuring root user authentication..."
+    sudo mysql -e "ALTER USER '\$DB_USER'@'localhost' IDENTIFIED WITH mysql_native_password BY '\$DB_PASS';"
+    sudo mysql -e "FLUSH PRIVILEGES;"
 fi
 
-# Create Database using the password provided
-mysql -uroot -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;" 2>/dev/null
+# Create Database
+mysql -u"\$DB_USER" -p"\$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS \$DB_NAME;" 2>/dev/null
 
 if [ $? -eq 0 ]; then
-    echo "✅ Database '$DB_NAME' verified."
+    echo "✅ Database '\$DB_NAME' created/verified."
 else
-    echo "❌ Failed to create database. Please check your MySQL settings."
+    echo "❌ Failed to create database. Please check your password."
+    echo "   Installation will continue, but the app might fail to start."
 fi
 
-# 5. Project Setup & .env Generation
+# --- 6. Project Setup ---
+echo ""
 echo "📂 Setting up Project..."
 npm install
 
-echo "🔑 Generating .env file with provided credentials..."
+# Create .env file
+echo "📝 Generating .env file..."
 cat > .env <<EOL
 PORT=3000
 DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=$DB_PASS
-DB_NAME=$DB_NAME
-BOT_TOKEN=${botToken}
-# Initial Admin Credentials for Seeding
-ADMIN_INIT_USER=$ADMIN_USER
-ADMIN_INIT_PASS=$ADMIN_PASS
+DB_PORT=3306
+DB_USER=\$DB_USER
+DB_PASSWORD=\$DB_PASS
+DB_NAME=\$DB_NAME
+
+# Initial Admin User (Used for seeding database)
+ADMIN_INIT_USER=\$ADMIN_USER
+ADMIN_INIT_PASS=\$ADMIN_PASS
+
+# Placeholder for Bot Token (Set via Admin Panel later)
+BOT_TOKEN=
 EOL
 
-echo "🔨 Building Frontend..."
+# --- 7. Build and Start ---
+echo ""
+echo "🔨 Building Application..."
 npm run build
 
-# 6. Install Dependencies
-echo "🤖 Installing Server Dependencies..."
+echo "🤖 Installing Production Dependencies..."
 npm install node-telegram-bot-api mysql2 dotenv express
 
-# 7. Install PM2
-echo "🔄 Installing PM2..."
+echo "🔄 Installing Process Manager (PM2)..."
 sudo npm install -g pm2
 
-# 8. Start Unified Server
 echo "🚀 Starting Server..."
-pm2 delete all 2>/dev/null || true
+pm2 delete bot-admin-pro 2>/dev/null || true
 pm2 start server.js --name "bot-admin-pro"
 pm2 save
-pm2 startup | tail -n 1 | bash
+pm2 startup | tail -n 1 | bash 2>/dev/null
 
 echo ""
-echo "✅ Installation Complete!"
-echo "👉 Admin Panel is running at: http://YOUR_SERVER_IP:3000"
-echo "👉 Login with User: $ADMIN_USER"
+echo "=============================================="
+echo "✅ INSTALLATION COMPLETE!"
+echo "=============================================="
+echo ""
+echo "🌐 Admin Panel URL: http://YOUR_SERVER_IP:3000"
+echo "👤 Login Username:  \$ADMIN_USER"
+echo "🔑 Login Password:  (Hidden)"
+echo ""
+echo "⚠️  NOTE: Login to the panel to set your Telegram Bot Token."
+echo "=============================================="
 `;
 
   const handleCopyScript = () => {
@@ -399,7 +418,6 @@ echo "👉 Login with User: $ADMIN_USER"
           {[
             { id: 'design', label: 'طراحی ظاهری', icon: Smartphone },
             { id: 'settings', label: 'تنظیمات ربات', icon: Settings },
-            { id: 'database', label: 'دیتابیس', icon: Database },
             { id: 'deploy', label: 'راه‌اندازی', icon: Server },
           ].map((tab) => (
             <button 
@@ -420,6 +438,18 @@ echo "👉 Login with User: $ADMIN_USER"
         <div className="p-6 flex-1 overflow-y-auto">
           {activeTab === 'design' && (
             <div className="space-y-6">
+              <div>
+                <label className={labelClassName}>توضیحات قبل از شروع ربات (Bot Description)</label>
+                <textarea 
+                  value={botDescription}
+                  onChange={(e) => setBotDescription(e.target.value)}
+                  rows={3}
+                  className={inputClassName}
+                  placeholder="متنی که کاربر قبل از زدن دکمه Start مشاهده می‌کند..."
+                />
+                <p className="text-xs text-gray-500 mt-1">این متن در صفحه پروفایل ربات یا صفحه خالی قبل از شروع نمایش داده می‌شود.</p>
+              </div>
+
               <div>
                 <label className={labelClassName}>پیام خوش‌آمدگویی (/start)</label>
                 <textarea 
@@ -487,40 +517,6 @@ echo "👉 Login with User: $ADMIN_USER"
                   <pre className="bg-slate-800 text-blue-300 p-4 rounded-xl overflow-x-auto text-sm font-mono leading-6 border border-slate-600 shadow-inner h-64" dir="ltr">
                     <code>{installationScript}</code>
                   </pre>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'database' && (
-            <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-sm text-blue-900 flex items-start gap-3 shadow-sm">
-                <Database className="shrink-0 mt-0.5 text-blue-600" size={20} />
-                <p className="font-medium leading-6">
-                  تنظیمات اتصال به دیتابیس MySQL. رمز عبور در هنگام اجرای اسکریپت نصب پرسیده خواهد شد.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className={labelClassName}>آدرس هاست</label>
-                  <input type="text" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} className={inputClassName} dir="ltr" />
-                </div>
-                <div>
-                  <label className={labelClassName}>پورت</label>
-                  <input type="text" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: e.target.value})} className={inputClassName} dir="ltr" />
-                </div>
-              </div>
-              
-              <div>
-                <label className={labelClassName}>نام دیتابیس</label>
-                <input type="text" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} className={inputClassName} dir="ltr" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className={labelClassName}>نام کاربری (معمولا root)</label>
-                  <input type="text" value={dbConfig.username} onChange={e => setDbConfig({...dbConfig, username: e.target.value})} className={inputClassName} dir="ltr" />
                 </div>
               </div>
             </div>
