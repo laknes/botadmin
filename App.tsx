@@ -7,7 +7,9 @@ import Orders from './pages/Orders';
 import Broadcast from './pages/Broadcast';
 import BotDesigner from './pages/BotDesigner';
 import UsersPage from './pages/Users';
+import BotUsers from './pages/BotUsers';
 import Login from './pages/Login';
+import { FeedbackProvider } from './components/Feedback';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -38,31 +40,34 @@ const App: React.FC = () => {
   };
 
   return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={
-          isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
-        } />
-        
-        <Route path="/*" element={
-          isAuthenticated ? (
-            <Layout userRole={userRole} onLogout={handleLogout}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/broadcast" element={<Broadcast />} />
-                <Route path="/bot-designer" element={<BotDesigner />} />
-                <Route path="/users" element={<UsersPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Layout>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } />
-      </Routes>
-    </Router>
+    <FeedbackProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={
+            isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
+          } />
+          
+          <Route path="/*" element={
+            isAuthenticated ? (
+              <Layout userRole={userRole} onLogout={handleLogout}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/products" element={<Products />} />
+                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/broadcast" element={<Broadcast />} />
+                  <Route path="/bot-designer" element={<BotDesigner />} />
+                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/bot-users" element={<BotUsers />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Layout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          } />
+        </Routes>
+      </Router>
+    </FeedbackProvider>
   );
 };
 

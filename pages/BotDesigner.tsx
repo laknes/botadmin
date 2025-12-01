@@ -13,6 +13,7 @@ import {
   Wifi,
   RefreshCw
 } from 'lucide-react';
+import { useFeedback } from '../components/Feedback';
 
 const MOCK_PRODUCT = {
   name: 'هدفون بی‌سیم مدل X2',
@@ -22,6 +23,7 @@ const MOCK_PRODUCT = {
 };
 
 const BotDesigner: React.FC = () => {
+  const { showToast, setLoading: setGlobalLoading } = useFeedback();
   const [activeTab, setActiveTab] = useState<'design' | 'settings' | 'database' | 'deploy'>('design');
   
   // Bot Config State
@@ -40,7 +42,6 @@ const BotDesigner: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState('');
   
   // UI States
-  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
 
@@ -86,7 +87,7 @@ const BotDesigner: React.FC = () => {
   }, []);
 
   const handleSaveSettings = async () => {
-    setIsSaving(true);
+    setGlobalLoading(true);
     setSaveSuccess(false);
 
     // Save DB config to local storage (Frontend only needs it for installation script generator)
@@ -112,14 +113,15 @@ const BotDesigner: React.FC = () => {
 
         if (res.ok) {
             setSaveSuccess(true);
+            showToast('تنظیمات با موفقیت ذخیره و اعمال شد', 'success');
             setTimeout(() => setSaveSuccess(false), 3000);
         } else {
-            alert('خطا در ذخیره تنظیمات روی سرور');
+            showToast('خطا در ذخیره تنظیمات روی سرور', 'error');
         }
     } catch (e) {
-        alert('خطا در برقراری ارتباط با سرور');
+        showToast('خطا در برقراری ارتباط با سرور', 'error');
     } finally {
-        setIsSaving(false);
+        setGlobalLoading(false);
     }
   };
 
@@ -127,6 +129,7 @@ const BotDesigner: React.FC = () => {
       if (!botToken.trim()) {
           setBotStatus('error');
           setStatusMessage("⚠️ خطا: فیلد توکن خالی است. لطفا توکن را وارد کنید.");
+          showToast('لطفا توکن را وارد کنید', 'warning');
           return;
       }
 
@@ -141,17 +144,21 @@ const BotDesigner: React.FC = () => {
               if (data.ok) {
                   setBotStatus('online');
                   setStatusMessage(`✅ اتصال موفقیت‌آمیز بود!\n\n🤖 نام ربات: ${data.result.first_name}\n🆔 نام کاربری: @${data.result.username}`);
+                  showToast('اتصال به ربات با موفقیت برقرار شد', 'success');
               } else {
                   setBotStatus('error');
                   setStatusMessage('❌ خطا از سمت تلگرام: توکن ارسال شده نامعتبر است.');
+                  showToast('توکن ربات نامعتبر است', 'error');
               }
           } else {
                setBotStatus('error');
                setStatusMessage(`❌ خطا در ارتباط: ${response.status}`);
+               showToast('خطا در اتصال به تلگرام', 'error');
           }
       } catch (error) {
           setBotStatus('error');
           setStatusMessage('❌ خطا در برقراری ارتباط. لطفا اینترنت سرور را بررسی کنید.');
+          showToast('خطا در شبکه', 'error');
       }
   };
 
@@ -334,6 +341,7 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
   const handleCopyScript = () => {
     navigator.clipboard.writeText(installationScript);
     setCopiedScript(true);
+    showToast('اسکریپت در کلیپ‌بورد کپی شد', 'info');
     setTimeout(() => setCopiedScript(false), 2000);
   };
 
@@ -345,6 +353,7 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    showToast('دانلود آغاز شد', 'info');
   };
 
   const inputClassName = "w-full p-3 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all placeholder:text-gray-400";
@@ -530,13 +539,12 @@ echo "✅ Installation Complete! Your Admin Panel and Bot are running."
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
           <button 
             onClick={handleSaveSettings}
-            disabled={isSaving}
             className={`flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-white transition-all shadow-lg transform active:scale-95 ${
               saveSuccess ? 'bg-green-600' : 'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
-            {isSaving ? <Loader2 size={20} className="animate-spin" /> : saveSuccess ? <CheckCircle size={20} /> : <Save size={20} />}
-            {isSaving ? 'در حال ذخیره...' : saveSuccess ? 'تنظیمات ذخیره و اعمال شد' : 'ذخیره و اعمال تنظیمات'}
+            {saveSuccess ? <CheckCircle size={20} /> : <Save size={20} />}
+            {saveSuccess ? 'تنظیمات ذخیره و اعمال شد' : 'ذخیره و اعمال تنظیمات'}
           </button>
         </div>
       </div>

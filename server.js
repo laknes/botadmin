@@ -93,9 +93,14 @@ const initDb = async () => {
           chat_id BIGINT PRIMARY KEY,
           name VARCHAR(255),
           phone_number VARCHAR(20),
+          username VARCHAR(255),
           registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      
+    try {
+        await connection.query("ALTER TABLE users ADD COLUMN username VARCHAR(255)");
+    } catch (e) { }
 
     // Settings Table (For Bot Configuration)
     await connection.query(`
@@ -175,11 +180,14 @@ async function startBot() {
         // /start Command
         botInstance.onText(/\/start/, async (msg) => {
             const chatId = msg.chat.id;
+            const username = msg.chat.username ? `@${msg.chat.username}` : '';
             try {
                 // Check if user exists
                 const [users] = await pool.query('SELECT * FROM users WHERE chat_id = ?', [chatId]);
                 
                 if (users.length > 0) {
+                    // Update username if changed
+                    await pool.query('UPDATE users SET username = ? WHERE chat_id = ?', [username, chatId]);
                     // Show Main Menu
                     sendMainMenu(chatId, welcomeMessage, { btnSearch, btnCode, btnCategory, btnCart });
                 } else {
@@ -201,10 +209,12 @@ async function startBot() {
         botInstance.on('contact', async (msg) => {
             const chatId = msg.chat.id;
             const contact = msg.contact;
+            const username = msg.chat.username ? `@${msg.chat.username}` : '';
+            
             if (contact && contact.user_id === chatId) {
                 await pool.query(
-                    'INSERT INTO users (chat_id, name, phone_number) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone_number = ?',
-                    [chatId, contact.first_name, contact.phone_number, contact.phone_number]
+                    'INSERT INTO users (chat_id, name, phone_number, username) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE phone_number = ?, username = ?',
+                    [chatId, contact.first_name, contact.phone_number, username, contact.phone_number, username]
                 );
                 await botInstance.sendMessage(chatId, '✅ ثبت نام شما با موفقیت انجام شد!', {
                     reply_markup: { remove_keyboard: true }
@@ -243,35 +253,51 @@ async function startBot() {
             } else if (data === 'search_code') {
                 botInstance.sendMessage(chatId, 'لطفا کد محصول را وارد کنید:');
             } else if (data.startsWith('cat_')) {
+                // Show products as inline buttons
                 const catName = data.split('cat_')[1];
-                
-                // Fetch products for this category
-                const [products] = await pool.query('SELECT * FROM products WHERE category = ? LIMIT 10', [catName]);
+                const [products] = await pool.query('SELECT id, name, price FROM products WHERE category = ? LIMIT 20', [catName]);
                 
                 if (products.length > 0) {
-                    for (const p of products) {
-                        const caption = `<b>${p.name}</b>\n\n🔖 کد محصول: ${p.code || '---'}\n💰 قیمت: ${Number(p.price).toLocaleString()} تومان\n📦 موجودی: ${p.stock > 0 ? p.stock : 'ناموجود'}\n\n📝 ${p.description || ''}`;
-                        
-                        const opts = { parse_mode: 'HTML' };
-                        
-                        if (p.image_url && p.image_url.startsWith('http')) {
-                            try {
-                                await botInstance.sendPhoto(chatId, p.image_url, { ...opts, caption: caption });
-                            } catch (e) {
-                                // Fallback if image fails
-                                await botInstance.sendMessage(chatId, caption, opts);
-                            }
-                        } else if (p.image_url && p.image_url.startsWith('data:image')) {
-                             // Sending base64 directly might be heavy, but usually works if converted to buffer. 
-                             // For simplicity in this demo, sending text if base64 to avoid lag, or implementing buffer conversion.
-                             // Here we just send text for base64 to be safe.
-                             await botInstance.sendMessage(chatId, caption, opts);
-                        } else {
-                            await botInstance.sendMessage(chatId, caption, opts);
-                        }
-                    }
+                    const buttons = products.map(p => ([{
+                        text: `${p.name} - ${Number(p.price).toLocaleString()} تومان`,
+                        callback_data: `prod_${p.id}`
+                    }]));
+                    
+                    botInstance.sendMessage(chatId, `محصولات دسته ${catName}:`, {
+                        reply_markup: { inline_keyboard: buttons }
+                    });
                 } else {
                     botInstance.sendMessage(chatId, `هیچ محصولی در دسته ${catName} یافت نشد.`);
+                }
+            } else if (data.startsWith('prod_')) {
+                // Show full product details
+                const prodId = data.split('prod_')[1];
+                const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [prodId]);
+                
+                if (rows.length > 0) {
+                    const p = rows[0];
+                    const caption = `<b>${p.name}</b>\n\n🔖 کد محصول: ${p.code || '---'}\n💰 قیمت: ${Number(p.price).toLocaleString()} تومان\n📦 موجودی: ${p.stock > 0 ? p.stock : 'ناموجود'}\n\n📝 ${p.description || ''}`;
+                    
+                    const opts = { 
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [[{ text: '🛒 افزودن به سبد خرید', callback_data: `add_${p.id}` }]]
+                        }
+                    };
+                    
+                    if (p.image_url && p.image_url.startsWith('http')) {
+                        try {
+                            await botInstance.sendPhoto(chatId, p.image_url, { ...opts, caption: caption });
+                        } catch (e) {
+                             await botInstance.sendMessage(chatId, caption, opts);
+                        }
+                    } else if (p.image_url && p.image_url.startsWith('data:image')) {
+                        await botInstance.sendMessage(chatId, caption, opts);
+                    } else {
+                        await botInstance.sendMessage(chatId, caption, opts);
+                    }
+                } else {
+                    botInstance.sendMessage(chatId, 'محصول یافت نشد.');
                 }
             }
         });
@@ -500,6 +526,16 @@ app.get('/api/orders', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// 5. Bot Users
+app.get('/api/bot-users', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM users ORDER BY registered_at DESC');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Catch-all

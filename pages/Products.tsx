@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Image as ImageIcon, Sparkles, X, Send, List, UploadCloud, Loader2, Save } from 'lucide-react';
 import { Product } from '../types';
 import { generateProductDescription } from '../services/geminiService';
+import { useFeedback } from '../components/Feedback';
 
 const Products: React.FC = () => {
+  const { showToast, confirm, setLoading: setGlobalLoading } = useFeedback();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -42,6 +44,7 @@ const Products: React.FC = () => {
           
       } catch (err) {
           console.error(err);
+          showToast('خطا در دریافت اطلاعات', 'error');
       } finally {
           setLoading(false);
       }
@@ -49,8 +52,16 @@ const Products: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    const savedChannel = localStorage.getItem('channel_id');
-    if (savedChannel) setChannelId(savedChannel);
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch('/api/settings');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.channel_id) setChannelId(data.channel_id);
+            }
+        } catch (e) {}
+    };
+    fetchSettings();
   }, []);
 
   const handleOpenModal = (product?: Product) => {
@@ -64,7 +75,7 @@ const Products: React.FC = () => {
 
   const handleGenerateDescription = async () => {
     if (!currentProduct.name || !currentProduct.category) {
-      alert("لطفا نام و دسته‌بندی محصول را وارد کنید");
+      showToast("لطفا نام و دسته‌بندی محصول را وارد کنید", 'warning');
       return;
     }
     setLoadingAI(true);
@@ -85,6 +96,7 @@ const Products: React.FC = () => {
   };
 
   const handleSave = async () => {
+    setGlobalLoading(true);
     try {
         const payload = { 
             ...currentProduct, 
@@ -112,40 +124,58 @@ const Products: React.FC = () => {
         if (res.ok) {
             await fetchData();
             setIsModalOpen(false);
+            showToast('محصول با موفقیت ذخیره شد', 'success');
         } else if (res.status === 409) {
-            alert('❌ خطا: نام محصول یا کد محصول تکراری است.');
+            showToast('خطا: نام محصول یا کد محصول تکراری است.', 'error');
         } else {
-            alert('خطا در ذخیره محصول');
+            showToast('خطا در ذخیره محصول', 'error');
         }
     } catch (err) {
-        alert('خطا در ارتباط با سرور');
+        showToast('خطا در ارتباط با سرور', 'error');
+    } finally {
+        setGlobalLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('آیا از حذف این محصول اطمینان دارید؟')) {
-      try {
-          await fetch(`/api/products/${id}`, { method: 'DELETE' });
-          await fetchData();
-      } catch (err) {
-          alert('خطا در حذف محصول');
-      }
-    }
+  const handleDelete = (id: string) => {
+    confirm({
+        title: 'حذف محصول',
+        message: 'آیا از حذف این محصول اطمینان دارید؟ این عملیات غیرقابل بازگشت است.',
+        confirmText: 'بله، حذف شود',
+        isDestructive: true,
+        onConfirm: async () => {
+             setGlobalLoading(true);
+             try {
+                await fetch(`/api/products/${id}`, { method: 'DELETE' });
+                await fetchData();
+                showToast('محصول حذف شد', 'success');
+             } catch (err) {
+                showToast('خطا در حذف محصول', 'error');
+             } finally {
+                setGlobalLoading(false);
+             }
+        }
+    });
   };
 
   const handleSendToChannel = (product: Product) => {
     if (!channelId) {
-      alert('لطفا ابتدا آیدی کانال را در بخش "طراحی ربات > تنظیمات" وارد کنید.');
+      showToast('لطفا ابتدا آیدی کانال را در بخش "طراحی ربات > تنظیمات" وارد کنید.', 'warning');
       return;
     }
-    const confirmSend = confirm(`آیا مطمئن هستید که می‌خواهید محصول "${product.name}" را به کانال ${channelId} ارسال کنید؟`);
-    if (confirmSend) {
-      alert(`✅ محصول با موفقیت به کانال ${channelId} ارسال شد.\n\n(نیاز به اجرای ربات روی سرور)`);
-    }
+    confirm({
+        title: 'ارسال به کانال',
+        message: `آیا مطمئن هستید که می‌خواهید محصول "${product.name}" را به کانال ${channelId} ارسال کنید؟`,
+        confirmText: 'ارسال',
+        onConfirm: () => {
+             showToast(`محصول در صف ارسال به ${channelId} قرار گرفت.`, 'success');
+        }
+    });
   };
 
   const handleAddCategory = async () => {
     if (newCategoryName && !categories.includes(newCategoryName)) {
+      setGlobalLoading(true);
       try {
           const res = await fetch('/api/categories', {
               method: 'POST',
@@ -155,20 +185,36 @@ const Products: React.FC = () => {
           if (res.ok) {
               setCategories([...categories, newCategoryName]);
               setNewCategoryName('');
+              showToast('دسته جدید افزوده شد', 'success');
           } else {
-              alert('خطا در افزودن دسته');
+              showToast('خطا در افزودن دسته', 'error');
           }
       } catch (e) {
-          alert('خطا در ارتباط با سرور');
+          showToast('خطا در ارتباط با سرور', 'error');
+      } finally {
+        setGlobalLoading(false);
       }
     }
   };
 
-  const handleDeleteCategory = async (name: string) => {
-      if (confirm(`آیا از حذف دسته "${name}" مطمئن هستید؟ این کار ممکن است محصولات این دسته را بی دسته‌بندی کند.`)) {
-          await fetch(`/api/categories/${name}`, { method: 'DELETE' });
-          fetchData();
-      }
+  const handleDeleteCategory = (name: string) => {
+      confirm({
+          title: 'حذف دسته‌بندی',
+          message: `آیا از حذف دسته "${name}" مطمئن هستید؟ محصولات این دسته "بدون دسته‌بندی" خواهند شد.`,
+          isDestructive: true,
+          onConfirm: async () => {
+               setGlobalLoading(true);
+               try {
+                   await fetch(`/api/categories/${name}`, { method: 'DELETE' });
+                   fetchData();
+                   showToast('دسته‌بندی حذف شد', 'success');
+               } catch (e) {
+                   showToast('خطا در حذف دسته', 'error');
+               } finally {
+                   setGlobalLoading(false);
+               }
+          }
+      });
   };
 
   const startEditCategory = (name: string) => {
@@ -178,13 +224,21 @@ const Products: React.FC = () => {
 
   const handleUpdateCategory = async () => {
       if (editingCategory && editCategoryName && editCategoryName !== editingCategory) {
-          await fetch(`/api/categories/${editingCategory}`, {
-              method: 'PUT',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ name: editCategoryName })
-          });
-          fetchData();
-          setEditingCategory(null);
+          setGlobalLoading(true);
+          try {
+             await fetch(`/api/categories/${editingCategory}`, {
+                 method: 'PUT',
+                 headers: {'Content-Type': 'application/json'},
+                 body: JSON.stringify({ name: editCategoryName })
+             });
+             fetchData();
+             setEditingCategory(null);
+             showToast('نام دسته ویرایش شد', 'success');
+          } catch(e) {
+             showToast('خطا در ویرایش دسته', 'error');
+          } finally {
+              setGlobalLoading(false);
+          }
       } else {
           setEditingCategory(null);
       }

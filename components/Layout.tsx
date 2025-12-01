@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Bell,
-  Bot
+  Bot,
+  Smartphone
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -30,6 +31,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout }) => {
     { label: 'مدیریت محصولات', icon: Package, path: '/products' },
     { label: 'سفارشات', icon: ShoppingCart, path: '/orders' },
     { label: 'طراحی ربات', icon: Bot, path: '/bot-designer' },
+    { label: 'کاربران ربات', icon: Smartphone, path: '/bot-users' },
     { label: 'پیام رسانی', icon: Send, path: '/broadcast' },
     { label: 'کاربران و نقش‌ها', icon: Users, path: '/users' },
   ];
